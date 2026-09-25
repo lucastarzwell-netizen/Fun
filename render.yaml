@@ -22,5 +22,3 @@ services:
         generateValue: true
       - key: HOUSE_AGENT_SECURE_COOKIES
         value: "1"
-      - key: HOUSE_AGENT_CORS_ORIGINS
-        value: ""
