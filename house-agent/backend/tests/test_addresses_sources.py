@@ -58,3 +58,20 @@ def test_criteria_block_switches_between_home_and_land_rules():
 
     homes = criteria_block(Criteria(property_types=["house"], land=land))
     assert "Vacant land preferences" not in homes
+
+
+def test_bed_bath_filters_never_hide_land():
+    from house_agent.agent.prompts import criteria_block
+
+    region = Region(name="Orange County", state="VA", anchor="X", redfin_county_id=1)
+    mixed = Criteria(property_types=["house", "land"], min_beds=3, min_baths=2)
+    assert "min-beds" not in redfin_county_url(region, mixed)
+    assert "Beds: at least 3 (homes only" in criteria_block(mixed)
+
+    # Old wizard versions could save a bedroom minimum on a land-only search.
+    land = Criteria(property_types=["land"], min_beds=3)
+    assert "min-beds" not in redfin_county_url(region, land)
+    assert "Beds" not in criteria_block(land)
+
+    homes = Criteria(property_types=["house"], min_beds=3)
+    assert "min-beds=3" in redfin_county_url(region, homes)

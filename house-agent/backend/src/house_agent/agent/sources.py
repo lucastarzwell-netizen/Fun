@@ -21,10 +21,13 @@ def redfin_filter(criteria: Criteria) -> str:
         parts.append(f"min-price={_k(criteria.min_price)}")
     if criteria.max_price is not None:
         parts.append(f"max-price={_k(criteria.max_price)}")
-    if criteria.min_beds:
-        parts.append(f"min-beds={criteria.min_beds:g}")
-    if criteria.min_baths:
-        parts.append(f"min-baths={criteria.min_baths:g}")
+    # Redfin applies bed/bath filters to every result, and land has neither, so with land in
+    # the search these would hide all land. The agent applies them to homes instead.
+    if "land" not in criteria.property_types:
+        if criteria.min_beds:
+            parts.append(f"min-beds={criteria.min_beds:g}")
+        if criteria.min_baths:
+            parts.append(f"min-baths={criteria.min_baths:g}")
     if criteria.min_acres:
         allowed = [a for a in _REDFIN_LOT_ACRES if a <= criteria.min_acres]
         if allowed:

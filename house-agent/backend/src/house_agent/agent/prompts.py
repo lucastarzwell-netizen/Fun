@@ -52,10 +52,11 @@ def criteria_block(c: Criteria) -> str:
             f"Lot size: {c.min_acres if c.min_acres is not None else 0} acres"
             + (f" to {c.max_acres} acres" if c.max_acres is not None else " or more")
         )
-    if c.min_beds:
-        lines.append(f"Beds: at least {c.min_beds:g}")
-    if c.min_baths:
-        lines.append(f"Baths: at least {c.min_baths:g}")
+    homes_only = " (homes only; doesn't apply to land)" if "land" in c.property_types else ""
+    if c.min_beds and c.property_types != ["land"]:
+        lines.append(f"Beds: at least {c.min_beds:g}{homes_only}")
+    if c.min_baths and c.property_types != ["land"]:
+        lines.append(f"Baths: at least {c.min_baths:g}{homes_only}")
     lines.append(
         "Status: active listings only (exclude pending, contingent, under contract, sold, "
         "off-market, auctions, short sales)."
