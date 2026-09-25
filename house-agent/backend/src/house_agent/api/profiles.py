@@ -88,6 +88,8 @@ def delete_profile(
     user: User = Depends(get_current_user),
 ):
     profile = owned_profile(session, user, profile_id)
+    if runner.is_running(profile.id):
+        raise HTTPException(409, "This search is running. Stop it first, then delete it.")
     scheduler.remove_profile(profile.id)
     session.delete(profile)
     session.commit()

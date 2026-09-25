@@ -57,6 +57,7 @@ export const api = {
   profiles: () => request<Profile[]>("/api/profiles"),
   createProfile: (body: ProfileIn) =>
     request<Profile>("/api/profiles", { method: "POST", body: json(body) }),
+  deleteProfile: (id: number) => request<void>(`/api/profiles/${id}`, { method: "DELETE" }),
   updateProfile: (id: number, body: ProfileIn) =>
     request<Profile>(`/api/profiles/${id}`, { method: "PUT", body: json(body) }),
   startRun: (id: number) => request<Run>(`/api/profiles/${id}/runs`, { method: "POST" }),

@@ -274,7 +274,42 @@ export function SettingsView({ profile }: { profile: Profile }) {
         </Field>
       </Panel>
       <FeedbackPanel profileId={profile.id} />
+      <DeletePanel profile={profile} />
     </form>
+  );
+}
+
+function DeletePanel({ profile }: { profile: Profile }) {
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => api.deleteProfile(profile.id),
+    onSuccess: () => {
+      qc.removeQueries({ predicate: (q) => q.queryKey.includes(profile.id) });
+      qc.invalidateQueries({ queryKey: ["profiles"] });
+    },
+  });
+  return (
+    <section className="card space-y-3 border-rose-200 p-5 dark:border-rose-900/60">
+      <div>
+        <h3 className="font-semibold text-rose-700 dark:text-rose-300">Delete this search</h3>
+        <p className="text-sm text-stone-500">
+          Stops its scheduled searches and permanently deletes its listings, rejected and excluded
+          addresses, run history and feedback. To just pause it, untick Run automatically under Schedule
+          instead.
+        </p>
+      </div>
+      {remove.isError && <p className="text-sm text-rose-600">{(remove.error as Error).message}</p>}
+      <button
+        type="button"
+        className="btn border border-rose-300 bg-white text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:bg-stone-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
+        disabled={remove.isPending}
+        onClick={() => {
+          if (confirm(`Delete "${profile.name}" and everything it found? This can't be undone.`)) remove.mutate();
+        }}
+      >
+        <Trash2 size={16} /> {remove.isPending ? "Deleting…" : "Delete this search"}
+      </button>
+    </section>
   );
 }
 

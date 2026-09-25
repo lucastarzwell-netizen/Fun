@@ -280,3 +280,25 @@ def test_unique_name_uses_the_search_time_zone(session):
     assert unique_name(session, user.id, "Land near DCA", "Not/AZone", now=now) == (
         "Land near DCA (Sep 26, 1:14 AM)"
     )
+
+
+def test_delete_search_removes_everything_and_refuses_while_running(tmp_path):
+    from house_agent.agent import runner
+    from house_agent.db import SessionLocal
+    from house_agent.models import AgentFeedback, ExcludedAddress, Listing, Run
+
+    pid = _seed(tmp_path)
+    with SessionLocal() as s:
+        s.add(AgentFeedback(profile_id=pid, listing_label="x", user_reason="y"))
+        s.commit()
+    with TestClient(app) as client:
+        runner._running.add(pid)
+        try:
+            assert client.delete(f"/api/profiles/{pid}").status_code == 409
+        finally:
+            runner._running.discard(pid)
+        assert client.delete(f"/api/profiles/{pid}").status_code == 204
+        assert client.get("/api/profiles").json() == []
+    with SessionLocal() as s:
+        for model in (Listing, ExcludedAddress, Run, AgentFeedback):
+            assert s.query(model).count() == 0, model.__name__
