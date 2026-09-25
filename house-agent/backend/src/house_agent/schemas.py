@@ -32,7 +32,7 @@ class Region(BaseModel):
     """An area to search. For Redfin, a county page."""
 
     name: str = Field(description="e.g. Lenawee County")
-    state: str = Field(min_length=2, max_length=2)
+    state: str = Field(min_length=2, max_length=2, description="State or province code")
     anchor: str = Field(description="Anchor code this region is searched for")
     redfin_county_id: int | None = None
 
@@ -47,7 +47,11 @@ class LandPrefs(BaseModel):
     avoid: list[str] = []
 
 
+Country = Literal["US", "CA"]
+
+
 class Criteria(BaseModel):
+    country: Country = "US"
     property_types: list[str] = ["house"]
     min_price: int | None = None
     max_price: int | None = None
@@ -131,6 +135,7 @@ class ListingOut(BaseModel):
     year_built: int | None
     anchor: str | None
     drive_hours: float | None
+    drive_km: float | None = None
     condition: Condition
     condition_notes: str
     url: str | None

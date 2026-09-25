@@ -96,12 +96,18 @@ def _landwatch(region: Region, criteria: Criteria) -> str:
     return f"https://www.landwatch.com/{state}-land-for-sale/{_county_slug(region)}"
 
 
+def _search_only(region: Region, criteria: Criteria) -> None:
+    """No reliable URL pattern: the agent finds the region's results page with web_search."""
+    return None
+
+
 @dataclass(frozen=True)
 class Site:
     key: str
     name: str
     county_url: Callable[[Region, Criteria], str | None]
     land_only: bool = False
+    country: str = "US"
 
 
 SITES: dict[str, Site] = {
@@ -112,9 +118,24 @@ SITES: dict[str, Site] = {
         Site("realtor", "Realtor.com", _realtor),
         Site("homes", "Homes.com", _homes),
         Site("landwatch", "LandWatch", _landwatch, land_only=True),
+        # Canada
+        Site("realtor_ca", "Realtor.ca", _search_only, country="CA"),
+        Site("zolo", "Zolo", _search_only, country="CA"),
+        Site("point2", "Point2 Homes", _search_only, country="CA"),
+        Site("redfin_ca", "Redfin.ca", _search_only, country="CA"),
     ]
 }
-DEFAULT_SITES = ["redfin", "zillow", "realtor", "homes", "landwatch"]
+DEFAULT_SITES_BY_COUNTRY = {
+    "US": ["redfin", "zillow", "realtor", "homes", "landwatch"],
+    "CA": ["realtor_ca", "zolo", "point2", "redfin_ca"],
+}
+DEFAULT_SITES = DEFAULT_SITES_BY_COUNTRY["US"]
+
+
+def sites_for(criteria: Criteria) -> list[str]:
+    """The search's chosen sites for its country, or that country's defaults."""
+    keys = [k for k in criteria.sites if k in SITES and SITES[k].country == criteria.country]
+    return keys or list(DEFAULT_SITES_BY_COUNTRY[criteria.country])
 
 
 def site_plan(
@@ -131,7 +152,7 @@ def site_plan(
     Order: sites not used last run, then the ones that were, then sites that blocked it.
     Within each group, `rotation` (run number + county index) spreads load across sites.
     """
-    keys = [k for k in (criteria.sites or DEFAULT_SITES) if k in SITES]
+    keys = sites_for(criteria)
     if "land" not in criteria.property_types:
         keys = [k for k in keys if not SITES[k].land_only]
     if not keys:

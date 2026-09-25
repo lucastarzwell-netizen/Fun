@@ -248,6 +248,7 @@ def apply_found(
         year_built=found.year_built,
         anchor=found.anchor,
         drive_hours=found.drive_hours,
+        drive_km=found.drive_km,
         condition=UNVERIFIED if found.condition == "reject" else found.condition,
         condition_notes=found.condition_notes or "",
         url=found.url,

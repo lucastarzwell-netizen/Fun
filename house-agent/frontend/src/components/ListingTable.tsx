@@ -41,7 +41,10 @@ export function ListingTable({
                   <Badge tone={s.tone}>{s.label}</Badge>
                 </td>
                 <td className="px-3 py-2 font-medium">{l.anchor}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{num(l.drive_hours)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {num(l.drive_hours)}
+                  {l.drive_km != null && <div className="text-xs text-stone-500">{Math.round(l.drive_km)} km</div>}
+                </td>
                 <td className="px-3 py-2">
                   <div className="font-medium">{l.address}</div>
                   <div className="text-xs text-stone-500">

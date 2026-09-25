@@ -41,6 +41,7 @@ _ADDED_COLUMNS = {
         "reject_reason": ("TEXT", "TEXT"),
         "user_included": ("BOOLEAN NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE"),
         "market_status": ("VARCHAR(20) NOT NULL DEFAULT 'active'",) * 2,
+        "drive_km": ("FLOAT",) * 2,
     },
 }
 

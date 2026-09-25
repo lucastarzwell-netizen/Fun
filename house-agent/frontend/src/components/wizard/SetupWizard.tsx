@@ -6,6 +6,7 @@ import { cx, money } from "../../lib/format";
 import type { Profile, SuggestOut } from "../../lib/types";
 import {
   CONDITIONS,
+  COUNTRY,
   DEAL_BREAKERS,
   DRIVE_TIMES,
   LAND_AVOID,
@@ -29,6 +30,7 @@ import { CheckList, ChipGroup, MultiChips, OptionCard, Question, hoursLabel } fr
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 type Step =
+  | "country"
   | "type"
   | "budget"
   | "size"
@@ -42,6 +44,7 @@ type Step =
 /** The questions depend on the property types: homes get "condition", land gets "land". */
 function stepsFor(a: WizardAnswers): Step[] {
   return [
+    "country",
     "type",
     "budget",
     "size",
@@ -63,7 +66,7 @@ export function SetupWizard({
 }) {
   const qc = useQueryClient();
   const [a, setA] = useState<WizardAnswers>(initialAnswers);
-  const [step, setStep] = useState<Step>("type");
+  const [step, setStep] = useState<Step>("country");
   const [runNow, setRunNow] = useState(true);
   const set = (patch: Partial<WizardAnswers>) => setA((cur) => ({ ...cur, ...patch }));
   const setLand = (patch: Partial<WizardAnswers["land"]>) => set({ land: { ...a.land, ...patch } });
@@ -71,6 +74,7 @@ export function SetupWizard({
   const i = STEPS.indexOf(step);
   const homes = hasHomes(a);
   const land = hasLand(a);
+  const W = COUNTRY[a.country];
 
   // --- county suggestions -------------------------------------------------------------
   const placesKey = JSON.stringify(a.places);
@@ -78,6 +82,7 @@ export function SetupWizard({
   const suggest = useMutation({
     mutationFn: () =>
       api.suggestRegions({
+        country: a.country,
         anchors: a.places.map((p) => ({ name: p.name.trim(), max_drive_hours: p.hours })),
         property_types: a.propertyTypes,
         min_acres: a.minAcres,
@@ -98,6 +103,7 @@ export function SetupWizard({
           redfin_county_id: null,
           selected: true,
           est_drive_hours: r.est_drive_hours,
+          est_drive_km: r.est_drive_km,
           note: r.note,
         })),
       });
@@ -129,6 +135,7 @@ export function SetupWizard({
   });
 
   const canContinue: Record<Step, boolean> = {
+    country: true,
     type: a.propertyTypes.length > 0,
     budget: a.maxPrice != null && a.maxPrice > 0 && (a.minPrice == null || a.minPrice <= a.maxPrice),
     location: a.places.every((p) => p.name.trim().length > 1),
@@ -170,6 +177,22 @@ export function SetupWizard({
         </div>
 
         <main className="flex-1 py-10">
+          {step === "country" && (
+            <Question title="Which country are you searching in?" hint="Listing sites, regions and prices follow the country you pick.">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(["US", "CA"] as const).map((k) => (
+                  <OptionCard
+                    key={k}
+                    selected={a.country === k}
+                    title={`${COUNTRY[k].flag}  ${COUNTRY[k].name}`}
+                    hint={k === "US" ? "Redfin, Zillow, Realtor.com, Homes.com" : "Realtor.ca, Zolo, Point2 Homes, Redfin.ca"}
+                    onClick={() => set({ country: k, anchors: [], regions: [] })}
+                  />
+                ))}
+              </div>
+            </Question>
+          )}
+
           {step === "type" && (
             <Question title="What kind of home are you looking for?" hint="Pick all that you'd consider.">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -216,7 +239,7 @@ export function SetupWizard({
           )}
 
           {step === "budget" && (
-            <Question title="What's your price range?" hint="The asking price. Leave the minimum empty for no floor.">
+            <Question title="What's your price range?" hint={`The asking price, in ${W.currency}. Leave the minimum empty for no floor.`}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <MoneyInput label="Minimum" value={a.minPrice} onChange={(v) => set({ minPrice: v })} />
                 <MoneyInput label="Maximum" value={a.maxPrice} onChange={(v) => set({ maxPrice: v })} autoFocus />
@@ -230,7 +253,7 @@ export function SetupWizard({
           {step === "location" && (
             <Question
               title="Where should the search be centered?"
-              hint="Enter an address, ZIP code, or landmark (like an airport, a town, or a workplace), then how far you're willing to drive from it."
+              hint={`Enter an address, ${W.postal}, or landmark (like an airport, a town, or a workplace), then how far you're willing to drive from it.`}
             >
               <div className="space-y-4">
                 {a.places.map((p, idx) => (
@@ -241,7 +264,7 @@ export function SetupWizard({
                         <input
                           autoFocus={idx === a.places.length - 1}
                           className="input py-3 pl-10 text-base"
-                          placeholder="e.g. 48104, Detroit airport, or 123 Main St, Ann Arbor MI"
+                          placeholder={W.example}
                           value={p.name}
                           onChange={(e) =>
                             set({ places: a.places.map((x, j) => (j === idx ? { ...x, name: e.target.value } : x)) })
@@ -484,6 +507,9 @@ export function SetupWizard({
                 />
               </label>
               <dl className="card divide-y divide-stone-100 text-sm dark:divide-stone-800">
+                <Row label="Country" onEdit={() => setStep("country")}>
+                  {W.flag} {W.name}
+                </Row>
                 <Row label="Home types" onEdit={() => setStep("type")}>
                   {a.propertyTypes.map((t) => PROPERTY_TYPES.find((p) => p.key === t)?.label).join(", ")}
                   <span className="text-stone-500">
@@ -496,8 +522,8 @@ export function SetupWizard({
                 <Row label="Centered on" onEdit={() => setStep("location")}>
                   {a.anchors.map((x) => `${x.name} (within ${hoursLabel(x.max_drive_hours)})`).join("; ")}
                 </Row>
-                <Row label="Counties" onEdit={() => setStep("areas")}>
-                  {a.regions.filter((r) => r.selected).length} counties
+                <Row label={W.Areas} onEdit={() => setStep("areas")}>
+                  {a.regions.filter((r) => r.selected).length} {W.areas}
                 </Row>
                 <Row label="Size" onEdit={() => setStep("size")}>
                   {[
@@ -578,9 +604,10 @@ function AreasStep({
   onRetry: () => void;
 }) {
   const [county, setCounty] = useState({ name: "", state: "", anchor: "" });
+  const W = COUNTRY[a.country];
   if (loading) {
     return (
-      <Question title="Finding counties within your drive time…" hint="Claude is working out which counties fall inside your drive-time limit. This takes a few seconds.">
+      <Question title={`Finding ${W.areas} within your drive time…`} hint={`Claude is working out which ${W.areas} fall inside your drive-time limit. This takes a few seconds.`}>
         <div className="card flex items-center gap-3 p-6 text-stone-600 dark:text-stone-300">
           <Loader2 className="animate-spin text-pine-600" /> Mapping your search area
         </div>
@@ -593,16 +620,16 @@ function AreasStep({
 
   return (
     <Question
-      title={error ? "Which counties should we search?" : "These are the counties within your drive time"}
+      title={error ? `Which ${W.areas} should we search?` : `These are the ${W.areas} within your drive time`}
       hint={
         error
-          ? "Add each county you'd like the agent to search."
-          : "Uncheck any you don't want, or add ones we missed. The agent searches each county you keep."
+          ? `Add each ${W.area} you'd like the agent to search.`
+          : `Uncheck any you don't want, or add ones we missed. The agent searches each ${W.area} you keep.`
       }
     >
       {error && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          Couldn't suggest counties automatically ({error}). Add them below, or{" "}
+          Couldn't suggest {W.areas} automatically ({error}). Add them below, or{" "}
           <button className="font-medium underline" onClick={onRetry}>
             try again
           </button>
@@ -627,11 +654,14 @@ function AreasStep({
                   </span>
                   <span className="hidden text-sm text-stone-500 sm:inline">{r.note}</span>
                   {r.est_drive_hours != null && (
-                    <span className="ml-auto text-sm tabular-nums text-stone-500">~{hoursLabel(r.est_drive_hours)}</span>
+                    <span className="ml-auto shrink-0 whitespace-nowrap text-sm tabular-nums text-stone-500">
+                      ~{hoursLabel(r.est_drive_hours)}
+                      {r.est_drive_km != null && ` · ${Math.round(r.est_drive_km)} km`}
+                    </span>
                   )}
                 </label>
               ))}
-              {!rows.length && <p className="px-4 py-3 text-sm text-stone-500">No counties yet.</p>}
+              {!rows.length && <p className="px-4 py-3 text-sm text-stone-500">No {W.areas} yet.</p>}
             </div>
           </section>
         );
@@ -640,7 +670,9 @@ function AreasStep({
         className="grid grid-cols-[1fr_4rem] gap-2 sm:grid-cols-[1fr_4rem_8rem_auto]"
         onSubmit={(e) => {
           e.preventDefault();
-          const name = /county$/i.test(county.name.trim()) ? county.name.trim() : `${county.name.trim()} County`;
+          const typed = county.name.trim();
+          // US counties get "County" added; Canadian region names are used as typed.
+          const name = a.country === "CA" || /county$/i.test(typed) ? typed : `${typed} County`;
           set({
             regions: [
               ...a.regions,
@@ -650,8 +682,8 @@ function AreasStep({
           setCounty({ ...county, name: "", state: "" });
         }}
       >
-        <input className="input" placeholder="Add a county" required value={county.name} onChange={(e) => setCounty({ ...county, name: e.target.value })} />
-        <input className="input uppercase" placeholder="ST" required minLength={2} maxLength={2} value={county.state} onChange={(e) => setCounty({ ...county, state: e.target.value.toUpperCase() })} />
+        <input className="input" placeholder={`Add a ${W.area}`} required value={county.name} onChange={(e) => setCounty({ ...county, name: e.target.value })} />
+        <input className="input uppercase" placeholder={W.region} required minLength={2} maxLength={2} value={county.state} onChange={(e) => setCounty({ ...county, state: e.target.value.toUpperCase() })} />
         {a.anchors.length > 1 && (
           <select className="input" value={county.anchor || a.anchors[0]?.code} onChange={(e) => setCounty({ ...county, anchor: e.target.value })}>
             {a.anchors.map((x) => (
@@ -666,7 +698,7 @@ function AreasStep({
         </button>
       </form>
       <div className="flex items-center justify-between text-sm text-stone-500">
-        <span>{selected} counties selected</span>
+        <span>{selected} {W.areas} selected</span>
         {!error && (
           <button className="btn-ghost px-2 py-1" onClick={onRetry}>
             <RefreshCw size={14} /> Suggest again

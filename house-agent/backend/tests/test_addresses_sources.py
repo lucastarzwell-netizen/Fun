@@ -122,3 +122,28 @@ def test_site_plan_prefers_sites_not_used_last_time():
         )
     ]
     assert order == ["realtor", "homes", "redfin", "zillow"]
+
+
+def test_canadian_searches_use_canadian_sites_and_conventions():
+    from house_agent.agent.prompts import check_prompt, criteria_block, search_prompt
+    from house_agent.agent.sources import site_plan
+
+    region = Region(name="Frontenac County", state="ON", anchor="YGK")
+    ca = Criteria(country="CA", property_types=["house", "land"])
+    plan = site_plan(ca, region, 0)
+    assert [k for k, _ in plan] == ["realtor_ca", "zolo", "point2", "redfin_ca"]
+    assert all(url is None for _, url in plan)  # found by web search, not guessed URLs
+
+    # US-only sites saved on a Canadian search are ignored.
+    assert [k for k, _ in site_plan(Criteria(country="CA", sites=["zillow"]), region, 0)][
+        0
+    ] == "realtor_ca"
+    # A US search never gets Canadian sites.
+    us = [k for k, _ in site_plan(Criteria(sites=["zillow", "zolo"]), region, 0)]
+    assert us == ["zillow"]
+
+    block = criteria_block(ca)
+    assert block.startswith("Country: Canada.") and "hectares" in block
+    assert "Realtor.ca" in check_prompt(ca, [])
+    assert "- zolo (Zolo)." in search_prompt(ca, "Frontenac County, ON", "YGK", plan, [], [])
+    assert criteria_block(Criteria()).startswith("Country: United States.")

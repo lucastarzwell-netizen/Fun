@@ -442,3 +442,14 @@ def test_each_run_leads_with_a_site_the_county_did_not_use_last_time(session):
     _run(session, profile, third)
     order = [k for k, _ in third.search_calls[0][1]]
     assert order[0] != "redfin" and order[-1] == "redfin"
+
+
+def test_drive_km_is_stored_for_canadian_listings(session):
+    profile = _profile(session)
+    found = {**_found("1 Lake Rd"), "drive_km": 118.0}
+    _run(
+        session,
+        profile,
+        FakeAgent(regions={"Lenawee County, MI": {"region_checked": True, "listings": [found]}}),
+    )
+    assert _listing(session, profile, "1 Lake Rd").drive_km == 118.0

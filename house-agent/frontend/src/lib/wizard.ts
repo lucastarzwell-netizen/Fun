@@ -1,6 +1,6 @@
 // Turns the setup wizard's answers into a search profile.
 
-import type { Anchor, Criteria, LandPrefs, ProfileIn, Region } from "./types";
+import type { Anchor, Country, Criteria, LandPrefs, ProfileIn, Region } from "./types";
 
 export const PROPERTY_TYPES = [
   { key: "house", label: "House", hint: "Single-family home" },
@@ -59,13 +59,44 @@ export const LAND_AVOID = [
 
 // Listing sites the agent can search (keys match backend agent/sources.py).
 export const SITES = [
-  { key: "redfin", name: "Redfin" },
-  { key: "zillow", name: "Zillow" },
-  { key: "realtor", name: "Realtor.com" },
-  { key: "homes", name: "Homes.com" },
-  { key: "landwatch", name: "LandWatch", landOnly: true },
+  { key: "redfin", name: "Redfin", country: "US" },
+  { key: "zillow", name: "Zillow", country: "US" },
+  { key: "realtor", name: "Realtor.com", country: "US" },
+  { key: "homes", name: "Homes.com", country: "US" },
+  { key: "landwatch", name: "LandWatch", country: "US", landOnly: true },
+  { key: "realtor_ca", name: "Realtor.ca", country: "CA" },
+  { key: "zolo", name: "Zolo", country: "CA" },
+  { key: "point2", name: "Point2 Homes", country: "CA" },
+  { key: "redfin_ca", name: "Redfin.ca", country: "CA" },
 ] as const;
-export const DEFAULT_SITES = SITES.map((s) => s.key as string);
+export const sitesFor = (country: Country) => SITES.filter((s) => s.country === country);
+export const DEFAULT_SITES = sitesFor("US").map((s) => s.key as string);
+
+/** Country-specific words used across setup and settings. */
+export const COUNTRY = {
+  US: {
+    name: "United States",
+    flag: "🇺🇸",
+    areas: "counties",
+    Areas: "Counties",
+    area: "county",
+    region: "ST",
+    postal: "ZIP code",
+    currency: "US dollars",
+    example: "e.g. 48104, Detroit airport, or 123 Main St, Ann Arbor MI",
+  },
+  CA: {
+    name: "Canada",
+    flag: "🇨🇦",
+    areas: "regions",
+    Areas: "Regions",
+    area: "region",
+    region: "Prov",
+    postal: "postal code",
+    currency: "Canadian dollars",
+    example: "e.g. K7L 3N6, Toronto Pearson airport, or 123 Main St, Kingston ON",
+  },
+} as const;
 
 export const DRIVE_TIMES = [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4];
 
@@ -104,8 +135,8 @@ export const DEAL_BREAKERS = [
   { key: "auctions", label: "Auctions and short sales", text: "Exclude auctions and short sales." },
   {
     key: "hoa",
-    label: "HOA fees",
-    text: "Exclude homes with a homeowners association (HOA) fee.",
+    label: "HOA or condo fees",
+    text: "Exclude homes with a homeowners association (HOA), condo or strata fee.",
   },
   {
     key: "commercial",
@@ -124,12 +155,13 @@ export type DealBreaker = (typeof DEAL_BREAKERS)[number]["key"];
 export type Frequency = "weekly" | "daily" | "manual";
 
 export interface WizardAnswers {
+  country: Country;
   propertyTypes: string[];
   minPrice: number | null;
   maxPrice: number | null;
   places: { name: string; hours: number }[];
   anchors: Anchor[];
-  regions: (Region & { selected: boolean; est_drive_hours?: number; note?: string })[];
+  regions: (Region & { selected: boolean; est_drive_hours?: number; est_drive_km?: number | null; note?: string })[];
   minBeds: number | null;
   minBaths: number | null;
   minAcres: number | null;
@@ -147,6 +179,7 @@ export interface WizardAnswers {
 
 export function initialAnswers(): WizardAnswers {
   return {
+    country: "US",
     propertyTypes: ["house"],
     minPrice: null,
     maxPrice: null,
@@ -210,6 +243,7 @@ export function toProfile(a: WizardAnswers): ProfileIn {
     .filter(Boolean)
     .join(" ");
   const criteria: Criteria = {
+    country: a.country,
     property_types: a.propertyTypes,
     min_price: a.minPrice,
     max_price: a.maxPrice,
@@ -225,7 +259,7 @@ export function toProfile(a: WizardAnswers): ProfileIn {
     include_nearby: true,
     condition_rules: CONDITIONS[a.condition].rules,
     land: hasLand(a) ? a.land : null,
-    sites: DEFAULT_SITES,
+    sites: sitesFor(a.country).map((s) => s.key),
     include_pending: a.includePending,
     extra_instructions: extra,
   };

@@ -7,7 +7,7 @@ user message.
 from __future__ import annotations
 
 from ..schemas import Criteria, LandPrefs
-from .sources import SITES
+from .sources import SITES, sites_for
 
 SYSTEM = """\
 You are a property-search assistant. You look through real-estate listing sites for one \
@@ -21,7 +21,8 @@ if the page didn't show it. If a page could not be loaded (blocked, rate-limited
 say so in the notes instead of inventing results.
 - Search pages often include "nearby" listings from other areas, and some are mis-geocoded. \
 Check each listing's real city and state before including it.
-- Listing sites (Redfin, Zillow, Realtor.com, Homes.com, LandWatch) sometimes refuse \
+- Listing sites (e.g. Redfin, Zillow, Realtor.com, Homes.com, LandWatch, Realtor.ca, Zolo, \
+Point2 Homes) sometimes refuse \
 automated access. If a site blocks you (403/429 error, CAPTCHA, "access denied", or a page \
 with no listings where there should be some), don't retry or work around it; move on to the \
 next site in the list and report the blocked site.
@@ -47,8 +48,20 @@ zoned AG". Mention price cuts you notice ("cut from $169,900 on 9/21").
 """
 
 
+COUNTRY_NOTES = {
+    "US": "Country: United States.",
+    "CA": (
+        "Country: Canada. Prices are in Canadian dollars. Use two-letter province codes "
+        "(ON, BC, QC, ...) for the state field. Lot sizes are often listed in hectares "
+        "(1 ha = 2.471 acres) or square feet (43,560 sq ft = 1 acre); always report acres. "
+        '"Conditionally sold" / "sold conditional" means the same as contingent. Give '
+        "drive_km (estimated driving distance in kilometres) along with drive_hours."
+    ),
+}
+
+
 def criteria_block(c: Criteria) -> str:
-    lines = [f"Property types: {', '.join(c.property_types) or 'any'}"]
+    lines = [COUNTRY_NOTES[c.country], f"Property types: {', '.join(c.property_types) or 'any'}"]
     if c.min_price is not None or c.max_price is not None:
         lo = f"${c.min_price:,}" if c.min_price is not None else "any"
         hi = f"${c.max_price:,}" if c.max_price is not None else "any"
@@ -166,7 +179,7 @@ def search_prompt(
 
 
 def check_prompt(c: Criteria, items: list[dict]) -> str:
-    sites = ", ".join(SITES[k].name for k in (c.sites or []) if k in SITES) or "any listing site"
+    sites = ", ".join(SITES[k].name for k in sites_for(c))
     rows = "\n".join(
         f"- ref {i['ref']}: {i['address']}, {i['city']}, {i['state']} | "
         f"price on file {i['price']} | {i['url'] or 'no URL on file'}"

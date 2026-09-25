@@ -227,7 +227,7 @@ def test_old_database_gets_new_columns(tmp_path):
     engine = make_engine(f"sqlite:///{path}")
     init_db(engine)
     cols = {c["name"] for c in inspect(engine).get_columns("listings")}
-    assert {"reject_reason", "user_included", "market_status"} <= cols
+    assert {"reject_reason", "user_included", "market_status", "drive_km"} <= cols
     with engine.connect() as conn:
         from sqlalchemy import text
 

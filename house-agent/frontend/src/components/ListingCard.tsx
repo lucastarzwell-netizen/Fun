@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Bath, BedDouble, Car, Check, ChevronDown, ExternalLink, Trees, X } from "lucide-react";
 import { Badge } from "./Badge";
 import { ListingHistory } from "./ListingHistory";
-import { cx, money, num, shortDate } from "../lib/format";
+import { cx, driveLabel, money, num, shortDate } from "../lib/format";
 import { statusLabel } from "../lib/listing";
 import type { Listing } from "../lib/types";
 
@@ -66,7 +66,7 @@ export function ListingCard({
         <Fact
           icon={<Car size={15} />}
           label={l.anchor ?? ""}
-          value={l.drive_hours != null ? `${num(l.drive_hours)} hr to` : "—"}
+          value={l.drive_hours != null ? `${driveLabel(l.drive_hours, l.drive_km)} to` : "—"}
         />
       </dl>
 

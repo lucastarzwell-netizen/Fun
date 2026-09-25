@@ -13,7 +13,10 @@ export interface Region {
   redfin_county_id: number | null;
 }
 
+export type Country = "US" | "CA";
+
 export interface Criteria {
+  country: Country;
   property_types: string[];
   min_price: number | null;
   max_price: number | null;
@@ -72,6 +75,7 @@ export interface Listing {
   year_built: number | null;
   anchor: string | null;
   drive_hours: number | null;
+  drive_km: number | null;
   condition: Condition;
   condition_notes: string;
   url: string | null;
@@ -170,6 +174,7 @@ export interface Stats {
 
 // Setup wizard (backend/src/house_agent/agent/suggest.py)
 export interface SuggestIn {
+  country: Country;
   anchors: { name: string; max_drive_hours: number }[];
   property_types: string[];
   min_acres: number | null;
@@ -188,6 +193,7 @@ export interface SuggestedRegion {
   state: string;
   anchor: string;
   est_drive_hours: number;
+  est_drive_km?: number | null;
   note: string;
 }
 

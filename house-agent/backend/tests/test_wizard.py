@@ -91,3 +91,17 @@ def test_wizard_endpoint_reports_agent_errors(monkeypatch):
 def test_wizard_rejects_empty_anchors():
     with TestClient(app) as client:
         assert client.post("/api/wizard/regions", json={"anchors": []}).status_code == 422
+
+
+def test_suggest_prompt_is_country_aware():
+    client = FakeClient(OUT.model_copy(deep=True))
+    body = SuggestIn(
+        country="CA", anchors=[{"name": "K7L 3N6", "max_drive_hours": 1}], max_price=400000
+    )
+    suggest_regions(body, client=client)
+    prompt = client.calls[0]["messages"][0]["content"]
+    assert "Canadian regions" in prompt and "postal code" in prompt and "Stay in Canada" in prompt
+    assert "$400,000 CAD" in prompt
+    us = FakeClient(OUT.model_copy(deep=True))
+    suggest_regions(BODY, client=us)
+    assert "US counties" in us.calls[0]["messages"][0]["content"]

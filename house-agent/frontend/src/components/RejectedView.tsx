@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Car, CircleSlash, ExternalLink, Plus, Trees } from "lucide-react";
 import { api } from "../lib/api";
-import { money, num, shortDate } from "../lib/format";
+import { driveLabel, money, num, shortDate } from "../lib/format";
 import type { Listing } from "../lib/types";
 import { Badge } from "./Badge";
 import { IncludeDialog } from "./IncludeDialog";
@@ -106,7 +106,7 @@ function RejectedCard({ listing: l, onInclude }: { listing: Listing; onInclude: 
         {l.drive_hours != null && (
           <span className="flex items-center gap-1.5">
             <Car size={15} className="text-stone-400" />
-            <span className="font-medium text-stone-800 dark:text-stone-200">{num(l.drive_hours)} hr</span> to{" "}
+            <span className="font-medium text-stone-800 dark:text-stone-200">{driveLabel(l.drive_hours, l.drive_km)}</span> to{" "}
             {l.anchor}
           </span>
         )}

@@ -35,3 +35,10 @@ export function duration(start: string | null, end: string | null) {
 export function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(" ");
 }
+
+/** "1.4 hr" or, when a distance is known (Canadian searches), "1.4 hr · 120 km". */
+export function driveLabel(hours: number | null | undefined, km?: number | null) {
+  if (hours == null) return "—";
+  const h = `${Number(hours.toFixed(1))} hr`;
+  return km != null ? `${h} · ${Math.round(km)} km` : h;
+}

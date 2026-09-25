@@ -4,7 +4,7 @@ import { Loader2, MapPin, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { cx } from "../lib/format";
 import type { Anchor, Criteria, Region } from "../lib/types";
-import { DRIVE_TIMES, placeCode } from "../lib/wizard";
+import { COUNTRY, DRIVE_TIMES, placeCode } from "../lib/wizard";
 import { ChipGroup, hoursLabel } from "./wizard/ui";
 
 /** "St. Clair County" and "St Clair" compare equal. */
@@ -12,7 +12,7 @@ const countyKey = (r: { name: string; state: string }) =>
   `${r.name.toLowerCase().replace(/county/g, "").replace(/[^a-z0-9]/g, "")}|${r.state.toUpperCase()}`;
 
 interface Proposal {
-  add: (Region & { est_drive_hours: number; note: string; keep: boolean })[];
+  add: (Region & { est_drive_hours: number; est_drive_km?: number | null; note: string; keep: boolean })[];
   drop: (Region & { keep: boolean })[];
 }
 
@@ -34,6 +34,7 @@ export function LocationsPanel({
   const suggest = useMutation({
     mutationFn: () =>
       api.suggestRegions({
+        country: c.country,
         anchors: c.anchors.map((a) => ({ name: a.name.trim(), max_drive_hours: a.max_drive_hours })),
         property_types: c.property_types,
         min_acres: c.min_acres,
@@ -105,7 +106,7 @@ export function LocationsPanel({
                   <MapPin size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                   <input
                     className="input pl-9"
-                    placeholder="Address, ZIP code, or landmark"
+                    placeholder={`Address, ${COUNTRY[c.country].postal}, or landmark`}
                     value={a.name}
                     onChange={(e) => setAnchor(i, { name: e.target.value })}
                   />
@@ -144,44 +145,44 @@ export function LocationsPanel({
         <button type="button" className="btn-ghost" disabled={suggest.isPending || c.anchors.some((a) => !a.name.trim())}
           onClick={() => suggest.mutate()}>
           {suggest.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-          Update counties for these drive times
+          Update {COUNTRY[c.country].areas} for these drive times
         </button>
       </div>
 
       {suggest.isPending && (
         <p className="flex items-center gap-2 text-sm text-stone-600 dark:text-stone-300">
-          <Loader2 size={16} className="animate-spin text-pine-600" /> Working out which counties are within your drive
-          times…
+          <Loader2 size={16} className="animate-spin text-pine-600" /> Working out which {COUNTRY[c.country].areas} are within
+          your drive times…
         </p>
       )}
       {changed && !proposal && !suggest.isPending && suggest.isError && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          Your counties were picked for the previous locations or drive times. Try{" "}
-          <span className="font-medium">Update counties</span> again, or edit the list below.
+          Your {COUNTRY[c.country].areas} were picked for the previous locations or drive times. Try{" "}
+          <span className="font-medium">Update {COUNTRY[c.country].areas}</span> again, or edit the list below.
         </div>
       )}
       {suggest.isError && (
         <p className="text-sm text-rose-600">
-          Couldn't suggest counties ({(suggest.error as Error).message}). You can still edit the county list below.
+          Couldn't suggest {COUNTRY[c.country].areas} ({(suggest.error as Error).message}). You can still edit the list below.
         </p>
       )}
 
       {proposal && (
         <div className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/60 p-4 text-sm dark:border-sky-900 dark:bg-sky-950/30">
           {proposal.add.length === 0 && proposal.drop.length === 0 ? (
-            <p>Your counties already match these drive times.</p>
+            <p>Your {COUNTRY[c.country].areas} already match these drive times.</p>
           ) : (
             <>
               {proposal.add.length > 0 && (
                 <ProposalList
-                  title={`Add ${proposal.add.length} ${proposal.add.length === 1 ? "county" : "counties"} now within reach`}
-                  rows={proposal.add.map((r) => ({ label: `${r.name}, ${r.state}`, detail: `~${hoursLabel(r.est_drive_hours)} · ${r.note}`, keep: r.keep }))}
+                  title={`Add ${proposal.add.length} ${proposal.add.length === 1 ? COUNTRY[c.country].area : COUNTRY[c.country].areas} now within reach`}
+                  rows={proposal.add.map((r) => ({ label: `${r.name}, ${r.state}`, detail: `~${hoursLabel(r.est_drive_hours)}${r.est_drive_km != null ? ` · ${Math.round(r.est_drive_km)} km` : ""} · ${r.note}`, keep: r.keep }))}
                   onToggle={(i) => setProposal({ ...proposal, add: proposal.add.map((r, j) => (j === i ? { ...r, keep: !r.keep } : r)) })}
                 />
               )}
               {proposal.drop.length > 0 && (
                 <ProposalList
-                  title={`Drop ${proposal.drop.length} ${proposal.drop.length === 1 ? "county" : "counties"} outside these drive times`}
+                  title={`Drop ${proposal.drop.length} ${proposal.drop.length === 1 ? COUNTRY[c.country].area : COUNTRY[c.country].areas} outside these drive times`}
                   rows={proposal.drop.map((r) => ({ label: `${r.name}, ${r.state}`, detail: `near ${r.anchor}`, keep: r.keep }))}
                   onToggle={(i) => setProposal({ ...proposal, drop: proposal.drop.map((r, j) => (j === i ? { ...r, keep: !r.keep } : r)) })}
                 />
@@ -191,7 +192,7 @@ export function LocationsPanel({
           <div className="flex justify-end gap-2">
             <button type="button" className="btn-ghost" onClick={() => setProposal(null)}>Cancel</button>
             {(proposal.add.length > 0 || proposal.drop.length > 0) && (
-              <button type="button" className="btn-primary" onClick={apply}>Apply to county list</button>
+              <button type="button" className="btn-primary" onClick={apply}>Apply to {COUNTRY[c.country].area} list</button>
             )}
           </div>
           <p className="text-xs text-stone-500">Nothing is saved until you click Save changes.</p>

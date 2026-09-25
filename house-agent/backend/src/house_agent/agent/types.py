@@ -21,6 +21,9 @@ class FoundListing(BaseModel):
     url: str | None = Field(default=None, description="Listing page URL")
     anchor: str | None = Field(default=None, description="Code of the nearest anchor")
     drive_hours: float | None = Field(default=None, description="Estimated drive to the anchor")
+    drive_km: float | None = Field(
+        default=None, description="Canadian searches: estimated driving distance in km"
+    )
     condition: Literal["good", "needs_updating", "unverified", "reject"]
     market_status: Literal["active", "pending", "contingent"] = Field(
         default="active", description="Listing status as shown on the listing page"

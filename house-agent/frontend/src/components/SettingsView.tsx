@@ -10,7 +10,8 @@ import {
   LAND_NICE_TO_HAVES,
   LAND_USES,
   LAND_ZONING,
-  SITES,
+  COUNTRY,
+  sitesFor,
   hasHomes,
   hasLand,
 } from "../lib/wizard";
@@ -85,6 +86,16 @@ export function SettingsView({ profile }: { profile: Profile }) {
       </div>
 
       <Panel title="Basics">
+        <Field label="Country" hint="Changing the country switches listing sites; review your locations and regions after.">
+          <select className="input" value={c.country}
+            onChange={(e) => {
+              const country = e.target.value as Criteria["country"];
+              setC({ country, sites: sitesFor(country).map((x) => x.key as string) });
+            }}>
+            <option value="US">🇺🇸 United States</option>
+            <option value="CA">🇨🇦 Canada</option>
+          </select>
+        </Field>
         <Field label="Search name">
           <input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
         </Field>
@@ -121,8 +132,8 @@ export function SettingsView({ profile }: { profile: Profile }) {
         hint="The agent spreads each search across these sites. Each county starts on a site it didn't use last time, so over a few searches every county is checked on every site. Sites that block the agent are tried last next time."
       >
         <div className="grid gap-2 sm:grid-cols-3">
-          {SITES.map((site) => {
-            const on = (c.sites ?? []).includes(site.key);
+          {sitesFor(c.country).map((site) => {
+            const on = (c.sites ?? []).includes(site.key) || !sitesFor(c.country).some((x) => c.sites.includes(x.key));
             return (
               <label key={site.key} className="flex items-center gap-2 text-sm">
                 <input
@@ -133,7 +144,7 @@ export function SettingsView({ profile }: { profile: Profile }) {
                     setC({
                       sites: on
                         ? c.sites.filter((k) => k !== site.key)
-                        : SITES.map((x) => x.key as string).filter((k) => k === site.key || c.sites.includes(k)),
+                        : sitesFor(c.country).map((x) => x.key as string).filter((k) => k === site.key || c.sites.includes(k)),
                     })
                   }
                 />
@@ -206,7 +217,7 @@ export function SettingsView({ profile }: { profile: Profile }) {
 
       <LocationsPanel criteria={c} savedAnchors={profile.criteria.anchors} setC={setC} />
 
-      <Panel title={`Counties (${c.regions.length})`} hint="The counties the agent searches. Use Update counties above after changing a drive time, or edit this list directly.">
+      <Panel title={`${COUNTRY[c.country].Areas} (${c.regions.length})`} hint={`The ${COUNTRY[c.country].areas} the agent searches. Use Update ${COUNTRY[c.country].areas} above after changing a drive time, or edit this list directly.`}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-stone-500">

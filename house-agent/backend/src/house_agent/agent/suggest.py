@@ -6,6 +6,8 @@ county IDs are left for the first search run to discover (see runner.py).
 
 from __future__ import annotations
 
+from typing import Literal
+
 import anthropic
 from pydantic import BaseModel, Field
 
@@ -19,6 +21,7 @@ class AnchorInput(BaseModel):
 
 
 class SuggestIn(BaseModel):
+    country: Literal["US", "CA"] = "US"
     anchors: list[AnchorInput] = Field(min_length=1, max_length=6)
     property_types: list[str] = ["house"]
     min_acres: float | None = None
@@ -34,14 +37,20 @@ class ResolvedAnchor(BaseModel):
     code: str = Field(
         description="2-5 letter label: an airport code (DTW), a ZIP code, or short initials"
     )
-    state: str = Field(description="Two-letter US state code")
+    state: str = Field(description="Two-letter state or province code")
 
 
 class SuggestedRegion(BaseModel):
-    name: str = Field(description="County name including the word County, e.g. 'Lenawee County'")
-    state: str = Field(description="Two-letter state code")
+    name: str = Field(
+        description="Region name as locals use it, e.g. 'Lenawee County', 'Frontenac County', "
+        "'Regional District of Nanaimo'"
+    )
+    state: str = Field(description="Two-letter state or province code")
     anchor: str = Field(description="Code of the anchor this county is near")
     est_drive_hours: float = Field(description="Typical drive from the anchor to the county center")
+    est_drive_km: float | None = Field(
+        default=None, description="Canada only: driving distance to the region's center, in km"
+    )
     note: str = Field(description="One short phrase on why it fits, e.g. 'rural, lots of acreage'")
 
 
@@ -50,11 +59,28 @@ class SuggestOut(BaseModel):
     regions: list[SuggestedRegion]
 
 
+AREAS = {
+    "US": {
+        "areas": "US counties",
+        "area": "county",
+        "postal": "ZIP code",
+        "cross": "Cross state lines when that's closer.",
+    },
+    "CA": {
+        "areas": "Canadian regions (census divisions: counties, regional municipalities, "
+        "regional districts, MRCs or districts, named as locals do)",
+        "area": "region",
+        "postal": "postal code",
+        "cross": "Cross provincial lines when that's closer. Stay in Canada. Give "
+        "est_drive_km (driving distance in km) for each region.",
+    },
+}
+
 PROMPT = """\
 A home buyer is setting up a property search centered on the location(s) below. Each one \
-is a street address, ZIP code, city, or landmark, with the longest drive they'd accept from \
+is a street address, {postal}, city, or landmark, with the longest drive they'd accept from \
 it. For each location, identify it precisely and give it a short code (the airport code for \
-airports, the ZIP for a ZIP code). Then list the US counties where most of the county is \
+airports, the {postal} for a {postal}). Then list the {areas} where most of the {area} is \
 within that maximum drive time, nearest first.
 
 If a location is ambiguous (e.g. "Springfield"), pick the most likely one and name it \
@@ -66,10 +92,10 @@ Locations:
 What they're looking for: {what}.
 
 Guidance:
-- Include counties that are realistic for this budget and lot size (e.g. rural and exurban \
-counties when they want acreage on a modest budget) and skip dense urban-core counties where \
-nothing would match.
-- Up to 15 counties per location. Cross state lines when that's closer.
+- Include areas that are realistic for this budget and lot size (e.g. rural and exurban \
+areas when they want acreage on a modest budget) and skip dense urban cores where nothing \
+would match.
+- Up to 15 per location. {cross}
 - Drive times are typical, non-rush-hour estimates.
 """
 
@@ -78,7 +104,8 @@ def suggest_regions(body: SuggestIn, client: anthropic.Anthropic | None = None) 
     places = "\n".join(f"- {a.name} (max {a.max_drive_hours:g} hr drive)" for a in body.anchors)
     what = ", ".join(body.property_types) or "any home"
     if body.max_price:
-        what += f", up to ${body.max_price:,}"
+        currency = " CAD" if body.country == "CA" else ""
+        what += f", up to ${body.max_price:,}{currency}"
     if body.min_acres:
         what += f", at least {body.min_acres:g} acres"
     try:
@@ -87,7 +114,12 @@ def suggest_regions(body: SuggestIn, client: anthropic.Anthropic | None = None) 
             model=settings.model,
             max_tokens=16000,
             output_config={"effort": "medium"},
-            messages=[{"role": "user", "content": PROMPT.format(places=places, what=what)}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": PROMPT.format(places=places, what=what, **AREAS[body.country]),
+                }
+            ],
             output_format=SuggestOut,
         )
     except anthropic.AuthenticationError as e:
