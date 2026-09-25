@@ -34,14 +34,18 @@ FRONTEND_DIST = Path(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    log = logging.getLogger(__name__)
     with SessionLocal() as session:
         ensure_default_user(session)
-        if n := mark_interrupted_runs(session):
-            logging.getLogger(__name__).warning("Closed %d run(s) interrupted by a restart", n)
-        for old_name, new_name in fix_existing_duplicates(session):
-            logging.getLogger(__name__).info(
-                "Renamed duplicate search %r to %r", old_name, new_name
-            )
+        # Housekeeping must never keep the app from starting.
+        try:
+            if n := mark_interrupted_runs(session):
+                log.warning("Closed %d run(s) interrupted by a restart", n)
+            for old_name, new_name in fix_existing_duplicates(session):
+                log.info("Renamed duplicate search %r to %r", old_name, new_name)
+        except Exception:
+            session.rollback()
+            log.exception("Startup housekeeping failed; continuing")
     if settings.scheduler_enabled:
         scheduler.start()
     yield
