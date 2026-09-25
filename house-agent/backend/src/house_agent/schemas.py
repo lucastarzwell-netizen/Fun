@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
 # SQLite drops tzinfo; all stored datetimes are UTC, so mark them as such on the way out.
 UTCDatetime = Annotated[
@@ -83,12 +84,41 @@ class Criteria(BaseModel):
 # ---- profiles ---------------------------------------------------------------------------
 
 
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class NotifySettings(BaseModel):
+    """Email a summary to these addresses after each search finishes."""
+
+    email_enabled: bool = False
+    email_to: list[str] = Field(default=[], max_length=10)
+    top_n: int = Field(default=5, ge=1, le=20)
+
+    @field_validator("email_to")
+    @classmethod
+    def _valid_addresses(cls, v: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for addr in v:
+            addr = addr.strip()
+            if not addr:
+                continue
+            if not _EMAIL.match(addr):
+                raise ValueError(f"{addr!r} doesn't look like an email address")
+            if addr.lower() not in {a.lower() for a in cleaned}:
+                cleaned.append(addr)
+        return cleaned
+
+
 class ProfileIn(BaseModel):
     name: str
     criteria: Criteria
     schedule_cron: str = "0 7 * * 5"
     timezone: str = "America/New_York"
     enabled: bool = True
+    # Stored as NULL on searches created before email summaries existed.
+    notify: Annotated[NotifySettings, BeforeValidator(lambda v: v or {})] = Field(
+        default_factory=NotifySettings
+    )
 
 
 class ProfileOut(ProfileIn):

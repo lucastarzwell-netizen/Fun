@@ -170,6 +170,7 @@ export interface WizardAnswers {
   land: LandPrefs;
   notes: string;
   includePending: boolean;
+  notify: import("./types").NotifySettings;
   frequency: Frequency;
   day: number;
   time: string;
@@ -200,6 +201,7 @@ export function initialAnswers(): WizardAnswers {
     },
     notes: "",
     includePending: false,
+    notify: { email_enabled: false, email_to: [], top_n: 5 },
     frequency: "weekly",
     day: 5,
     time: "07:00",
@@ -269,5 +271,6 @@ export function toProfile(a: WizardAnswers): ProfileIn {
     schedule_cron: cronFor(a),
     timezone: a.timezone,
     enabled: a.frequency !== "manual",
+    notify: a.notify,
   };
 }

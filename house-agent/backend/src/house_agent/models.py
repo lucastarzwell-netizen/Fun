@@ -56,6 +56,8 @@ class SearchProfile(Base):
     schedule_cron: Mapped[str] = mapped_column(String(100), default="0 7 * * 5")
     timezone: Mapped[str] = mapped_column(String(64), default="America/New_York")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Email summary settings (schemas.NotifySettings); NULL = off.
+    notify: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

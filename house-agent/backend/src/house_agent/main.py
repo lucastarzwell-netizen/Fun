@@ -62,6 +62,7 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(profiles.router)
+app.include_router(profiles.email_router)
 app.include_router(listings.router)
 app.include_router(wizard.router)
 

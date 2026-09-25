@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import scheduler
+from .. import notify, scheduler
 from ..agent import runner
 from ..auth import get_current_user
 from ..db import SessionLocal, get_session
 from ..models import SearchProfile, User
 from ..naming import unique_name
-from ..schemas import ProfileIn, ProfileOut, RunOut
-from .deps import owned_profile
+from ..schemas import NotifySettings, ProfileIn, ProfileOut, RunOut
+from .deps import last_finished_run, owned_profile
 
 router = APIRouter(prefix="/api/profiles", tags=["profiles"])
 
@@ -109,3 +112,46 @@ def start_run(
 
     session.expire_all()
     return session.get(Run, run_id)
+
+
+# ---- email summaries --------------------------------------------------------------------
+
+email_router = APIRouter(prefix="/api", tags=["email"])
+
+
+class TestEmailIn(BaseModel):
+    to: list[str]
+
+
+@email_router.get("/email/status")
+def email_status(user: User = Depends(get_current_user)) -> dict:
+    cfg = notify.smtp_config()
+    return {"configured": cfg is not None, "sender": cfg.sender if cfg else None}
+
+
+@email_router.post("/profiles/{profile_id}/test-email")
+def test_email(
+    profile_id: int,
+    body: TestEmailIn,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Send the summary of this search's latest finished run (or an empty one) now."""
+    profile = owned_profile(session, user, profile_id)
+    try:
+        to = NotifySettings(email_to=body.to).email_to
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    if not to:
+        raise HTTPException(422, "Add at least one email address")
+    # With no finished run yet, preview with an empty run (not saved anywhere).
+    run = last_finished_run(session, profile.id) or SimpleNamespace(
+        id=-1, profile_id=profile.id, profile=profile, status="succeeded", summary={}
+    )
+    settings = NotifySettings.model_validate(profile.notify or {})
+    subject, text, html_body = notify.build_summary(session, run, settings.top_n)
+    try:
+        notify.send_email(to, "[Test] " + subject, text, html_body)
+    except notify.EmailError as e:
+        raise HTTPException(503, str(e)) from e
+    return {"sent_to": to}

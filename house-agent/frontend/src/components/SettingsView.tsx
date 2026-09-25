@@ -16,6 +16,7 @@ import {
   hasLand,
 } from "../lib/wizard";
 import { CheckList, MultiChips } from "./wizard/ui";
+import { EmailSettings } from "./EmailSettings";
 import { LocationsPanel } from "./LocationsPanel";
 
 const EMPTY_LAND: LandPrefs = { uses: [], must_have: [], nice_to_have: [], zoning: [], avoid: [] };
@@ -284,9 +285,41 @@ export function SettingsView({ profile }: { profile: Profile }) {
             onChange={(e) => setC({ extra_instructions: e.target.value })} />
         </Field>
       </Panel>
+      <EmailPanel
+        profileId={profile.id}
+        value={draft.notify}
+        onChange={(notify) => setDraft({ ...draft, notify })}
+      />
+
       <FeedbackPanel profileId={profile.id} />
       <DeletePanel profile={profile} />
     </form>
+  );
+}
+
+function EmailPanel({
+  profileId,
+  value,
+  onChange,
+}: {
+  profileId: number;
+  value: ProfileIn["notify"];
+  onChange: (v: ProfileIn["notify"]) => void;
+}) {
+  const test = useMutation({ mutationFn: () => api.testEmail(profileId, value.email_to) });
+  return (
+    <Panel title="Email summaries" hint="A summary of each finished search, with the top listings, sent to everyone listed.">
+      <EmailSettings value={value} onChange={onChange} />
+      {value.email_enabled && value.email_to.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" className="btn-outline" disabled={test.isPending} onClick={() => test.mutate()}>
+            {test.isPending ? "Sending…" : "Send a test email"}
+          </button>
+          {test.isSuccess && <span className="text-sm text-pine-700">Sent to {test.data.sent_to.join(", ")}</span>}
+          {test.isError && <span className="text-sm text-rose-600">{(test.error as Error).message}</span>}
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -361,7 +394,14 @@ function FeedbackPanel({ profileId }: { profileId: number }) {
 }
 
 function strip(p: Profile): ProfileIn {
-  return { name: p.name, criteria: p.criteria, schedule_cron: p.schedule_cron, timezone: p.timezone, enabled: p.enabled };
+  return {
+    name: p.name,
+    criteria: p.criteria,
+    schedule_cron: p.schedule_cron,
+    timezone: p.timezone,
+    enabled: p.enabled,
+    notify: p.notify ?? { email_enabled: false, email_to: [], top_n: 5 },
+  };
 }
 
 function Panel({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {

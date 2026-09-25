@@ -21,6 +21,7 @@ from ..models import (
     Run,
     SearchProfile,
 )
+from ..notify import email_run_summary
 from ..reconcile import RunChanges, apply_check, apply_found, excluded_keys
 from ..schemas import Criteria
 from .claude_agent import AgentError, ClaudeSearchAgent, SearchAgent
@@ -115,10 +116,15 @@ def execute_run(session: Session, run_id: int, agent: SearchAgent | None = None)
             return run
         _running.add(profile.id)
     try:
-        return _execute(session, run, profile, agent or ClaudeSearchAgent())
+        run = _execute(session, run, profile, agent or ClaudeSearchAgent())
     finally:
         with _running_lock:
             _running.discard(profile.id)
+    try:
+        email_run_summary(session, run)
+    except Exception:  # an email problem must never fail the search
+        log.exception("Run %s: emailing the summary failed", run.id)
+    return run
 
 
 def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAgent) -> Run:

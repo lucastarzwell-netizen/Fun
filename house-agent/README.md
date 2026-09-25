@@ -128,6 +128,12 @@ the service and run `house-agent import <file>` with your seed file.
 | `HOUSE_AGENT_PASSWORD` | (unset: no sign-in) | Set on any public deployment |
 | `HOUSE_AGENT_SECRET` | derived from password | Key that signs session cookies |
 | `HOUSE_AGENT_SECURE_COOKIES` | `0` | `1` when served over HTTPS |
+| `HOUSE_AGENT_SMTP_USER` | (unset: no email) | Mail account the summaries are sent through |
+| `HOUSE_AGENT_SMTP_PASSWORD` | | Its password; for Gmail, an [app password](https://myaccount.google.com/apppasswords) |
+| `HOUSE_AGENT_SMTP_HOST` / `_PORT` | `smtp.gmail.com` / `587` | Any SMTP server; port 465 uses SSL |
+| `HOUSE_AGENT_EMAIL_FROM` | the SMTP user | "From" address, e.g. an alias. Gmail requires it to be a verified "Send mail as" address |
+| `HOUSE_AGENT_EMAIL_NAME` | `House Agent` | Sender name recipients see |
+| `HOUSE_AGENT_PUBLIC_URL` | Render's URL | Link to the app in emails |
 
 ## Adding logins later
 

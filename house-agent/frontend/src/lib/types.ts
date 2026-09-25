@@ -42,12 +42,19 @@ export interface LandPrefs {
   avoid: string[];
 }
 
+export interface NotifySettings {
+  email_enabled: boolean;
+  email_to: string[];
+  top_n: number;
+}
+
 export interface ProfileIn {
   name: string;
   criteria: Criteria;
   schedule_cron: string;
   timezone: string;
   enabled: boolean;
+  notify: NotifySettings;
 }
 
 export interface Profile extends ProfileIn {
@@ -137,6 +144,7 @@ export interface RunSummary {
   sites?: Record<string, { used: number; blocked: number }>;
   active_count?: number;
   imported_from?: string;
+  email?: string;
   listings_imported?: number;
   excluded_imported?: number;
 }

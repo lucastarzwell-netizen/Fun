@@ -88,5 +88,11 @@ export const api = {
   stopRun: (id: number) => request<Run>(`/api/runs/${id}/stop`, { method: "POST" }),
   suggestRegions: (body: SuggestIn) =>
     request<SuggestOut>("/api/wizard/regions", { method: "POST", body: json(body) }),
+  emailStatus: () => request<{ configured: boolean; sender: string | null }>("/api/email/status"),
+  testEmail: (profileId: number, to: string[]) =>
+    request<{ sent_to: string[] }>(`/api/profiles/${profileId}/test-email`, {
+      method: "POST",
+      body: json({ to }),
+    }),
   stats: (profileId: number) => request<Stats>(`/api/profiles/${profileId}/stats`),
 };

@@ -26,6 +26,7 @@ import {
   toProfile,
 } from "../../lib/wizard";
 import { CheckList, ChipGroup, MultiChips, OptionCard, Question, hoursLabel } from "./ui";
+import { EmailSettings } from "../EmailSettings";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -143,7 +144,7 @@ export function SetupWizard({
     size: true,
     condition: true,
     land: true,
-    schedule: true,
+    schedule: !a.notify.email_enabled || a.notify.email_to.length > 0,
     review: !create.isPending,
   };
 
@@ -492,6 +493,10 @@ export function SetupWizard({
                   </label>
                 </div>
               )}
+              <div className="card space-y-2 p-4">
+                <div className="font-medium">Email summaries</div>
+                <EmailSettings value={a.notify} onChange={(notify) => set({ notify })} />
+              </div>
             </Question>
           )}
 
@@ -550,6 +555,11 @@ export function SetupWizard({
                       .join(". ") || "No land preferences"}
                   </Row>
                 )}
+                <Row label="Email" onEdit={() => setStep("schedule")}>
+                  {a.notify.email_enabled && a.notify.email_to.length
+                    ? `Top ${a.notify.top_n} to ${a.notify.email_to.join(", ")}`
+                    : "Off"}
+                </Row>
                 <Row label="Schedule" onEdit={() => setStep("schedule")}>
                   {a.frequency === "manual"
                     ? "Only when you run it"

@@ -119,6 +119,14 @@ function RunDetail({ id }: { id: number }) {
           </ul>
         </div>
       )}
+      {s.email && (
+        <div>
+          <h4 className="mb-1 font-medium">Email</h4>
+          <p className={cx("text-stone-600 dark:text-stone-400", s.email.startsWith("Email not sent") && "text-amber-700 dark:text-amber-400")}>
+            {s.email}
+          </p>
+        </div>
+      )}
       {s.usage && (
         <div>
           <h4 className="mb-1 font-medium">Usage</h4>
