@@ -31,7 +31,7 @@ export function DismissDialog({
         }}
       >
         <div>
-          <h2 className="font-display text-lg font-semibold">Rule out this listing?</h2>
+          <h2 className="font-display text-lg font-semibold">Dismiss this listing?</h2>
           <p className="mt-1 text-sm text-stone-500">
             {listing.address}, {listing.city} will move to the Excluded list and the agent won't add it
             back. You can restore it later.
@@ -61,7 +61,7 @@ export function DismissDialog({
             Cancel
           </button>
           <button type="submit" className="btn bg-rose-600 text-white hover:bg-rose-700">
-            Rule out
+            Dismiss
           </button>
         </div>
       </form>

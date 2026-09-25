@@ -74,7 +74,7 @@ export function ListingTable({
                         <ExternalLink size={15} />
                       </a>
                     )}
-                    <button onClick={() => onDismiss(l)} className="btn-ghost p-1.5 hover:text-rose-700" title="Rule out">
+                    <button onClick={() => onDismiss(l)} className="btn-ghost p-1.5 hover:text-rose-700" title="Dismiss">
                       <X size={15} />
                     </button>
                   </div>

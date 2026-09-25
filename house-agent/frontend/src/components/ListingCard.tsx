@@ -83,11 +83,11 @@ export function ListingCard({
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-stone-100 px-2 py-2 dark:border-stone-800">
+      <div className="mt-3 flex flex-wrap items-center gap-0.5 border-t border-stone-100 px-1.5 py-2 dark:border-stone-800">
         <button
           onClick={() => onReviewed(!l.reviewed)}
           className={cx(
-            "btn px-2.5 py-1.5",
+            "btn px-2 py-1.5",
             l.reviewed
               ? "text-pine-700 hover:bg-pine-50 dark:text-pine-300 dark:hover:bg-pine-900/40"
               : "text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800",
@@ -104,26 +104,24 @@ export function ListingCard({
           </span>
           Reviewed
         </button>
-        <button onClick={() => setOpen(!open)} className="btn-ghost px-2.5 py-1.5" title="History">
+        <button onClick={() => setOpen(!open)} className="btn-ghost px-2 py-1.5" title="History">
           <ChevronDown size={15} className={cx("transition", open && "rotate-180")} />
           History
         </button>
-        <div className="ml-auto flex items-center gap-1">
-          {l.url && (
-            <a href={l.url} target="_blank" rel="noreferrer" className="btn-ghost px-2.5 py-1.5">
-              <ExternalLink size={15} />
-              Listing
-            </a>
-          )}
-          <button
-            onClick={onDismiss}
-            className="btn px-2.5 py-1.5 text-stone-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-900/30"
-            title="Rule out this listing"
-          >
-            <X size={15} />
-            Rule out
-          </button>
-        </div>
+        {l.url && (
+          <a href={l.url} target="_blank" rel="noreferrer" className="btn-ghost px-2 py-1.5">
+            <ExternalLink size={15} />
+            Listing
+          </a>
+        )}
+        <button
+          onClick={onDismiss}
+          className="btn ml-auto px-2 py-1.5 text-stone-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-900/30"
+          title="Dismiss this listing"
+        >
+          <X size={15} />
+          Dismiss
+        </button>
       </div>
     </article>
   );
