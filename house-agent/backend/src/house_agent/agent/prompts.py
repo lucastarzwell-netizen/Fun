@@ -81,8 +81,10 @@ def search_prompt(
     where = (
         f"Start from this search page: {url}\nCheck that the page title names the right area."
         if url
-        else f"Find current listings in {region_label} on Redfin (or another listing site "
-        "that allows access) using web_search, then open them with web_fetch."
+        else f"Find the Redfin search-results page for {region_label} with web_search (its URL "
+        "looks like https://www.redfin.com/county/<ID>/<ST>/<Name>-County), open it with "
+        "web_fetch, and report the county ID. If Redfin isn't reachable, use another listing "
+        "site that allows automated access."
     )
     parts = [
         f"Search {region_label} for listings that match the buyer's criteria. "

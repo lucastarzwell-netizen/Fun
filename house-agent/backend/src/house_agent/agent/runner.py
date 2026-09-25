@@ -130,6 +130,7 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             select(ExcludedAddress).where(ExcludedAddress.profile_id == profile.id)
         )
     ]
+    learned_ids = False
     for region in criteria.regions:
         label = f"{region.name}, {region.state}"
         known = [
@@ -152,6 +153,9 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             skipped_regions.append(label)
             logline(f"{label} failed: {e}")
             continue
+        if region.redfin_county_id is None and result.redfin_county_id:
+            region.redfin_county_id = result.redfin_county_id
+            learned_ids = True
         if not result.region_checked:
             skipped_regions.append(label + (f" ({result.notes})" if result.notes else ""))
         for found in result.listings:
@@ -160,6 +164,10 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             apply_found(session, profile, found, run.id, today, changes, excluded)
         session.commit()
         logline(f"{label}: {len(result.listings)} candidates reported")
+
+    if learned_ids:
+        # Save discovered county IDs so later runs open the results page directly.
+        profile.criteria = criteria.model_dump(mode="json")
 
     run.summary = {
         **changes.as_dict(),

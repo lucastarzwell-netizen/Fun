@@ -12,18 +12,25 @@ backend/   Python API (FastAPI + SQLite), scheduler, and the Claude search agent
 
 ## How it works
 
-1. A **search profile** holds the criteria (price, lot size, property type), the anchors
+1. A **guided setup** walks the user through a few questions: home type, price range, size,
+   a central address, ZIP code, or landmark with a maximum drive time, how much work
+   they'll take on, and how often to search. From the location and drive time, Claude
+   suggests the counties to search (`POST /api/wizard/regions`). The user unchecks or adds
+   counties, and the answers become a **search profile**.
+2. A **search profile** holds the criteria (price, lot size, property type), the anchors
    (e.g. airports plus a maximum drive time), the regions to search (counties, optionally
    with a Redfin county ID), the condition rules, and a weekly schedule.
-2. On each run, `agent/runner.py`:
+3. On each run, `agent/runner.py`:
    - **re-checks** every active listing in batches: still for sale? price changed? condition?
    - **searches** each region. The agent opens the Redfin county results page (built from
      the criteria, same URL pattern as the routine), opens each new candidate's listing,
-     and labels its condition as `good`, `needs_updating` or `reject`.
-3. The agent (`agent/claude_agent.py`) uses Claude with the server-side `web_search` /
+     and labels its condition as `good`, `needs_updating` or `reject`. For counties added
+     through the wizard, the first run finds the Redfin county page and saves its ID, so later
+     runs open it directly.
+4. The agent (`agent/claude_agent.py`) uses Claude with the server-side `web_search` /
    `web_fetch` tools and reports back through a `submit_*` tool with a checked schema.
    It only reports what it saw.
-4. `reconcile.py` then decides what changes, in plain code: new listings, price changes,
+5. `reconcile.py` then decides what changes, in plain code: new listings, price changes,
    removals (sold, pending, off-market, out of criteria, major repairs), relistings. Excluded
    addresses are never added back. Every change is saved as a listing event, so each house
    keeps its history.
@@ -53,13 +60,15 @@ cd ../frontend
 npm install
 ```
 
-Import a search profile. `seed.example.json` is a small example; your real search, with its
-current listings and Excluded list, can be imported the same way from a local seed file
-(`*.local.json` files and `backend/data/` are gitignored):
+The first time you open the app it starts the guided setup. Add more searches later with
+**New search**.
+
+To move an existing search over from the Google Sheet (an admin step, not something users
+do), import a seed file from the command line. `*.local.json` files and `backend/data/` are
+gitignored:
 
 ```bash
-cd house-agent/backend
-house-agent import seed.example.json
+house-agent import path/to/my-search.local.json
 ```
 
 ### Run it

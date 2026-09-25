@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, History, Home, Loader2, Monitor, Moon, Play, Settings2, Sun } from "lucide-react";
+import { Ban, History, Home, Loader2, Monitor, Moon, Play, Plus, Settings2, Sun } from "lucide-react";
 import { api } from "./lib/api";
 import { cx, dateTime } from "./lib/format";
 import { useTheme } from "./lib/theme";
@@ -9,6 +9,7 @@ import { ListingsView } from "./components/ListingsView";
 import { ExcludedView } from "./components/ExcludedView";
 import { RunsView } from "./components/RunsView";
 import { SettingsView } from "./components/SettingsView";
+import { SetupWizard } from "./components/wizard/SetupWizard";
 
 type Tab = "listings" | "excluded" | "runs" | "settings";
 
@@ -24,6 +25,7 @@ export default function App() {
   const [tab, setTab] = useLocal<Tab>("tab", "listings");
   const [profileId, setProfileId] = useLocal<number | null>("profileId", null);
   const [theme, setTheme] = useTheme();
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: api.profiles });
   const profile = profiles.data?.find((p) => p.id === profileId) ?? profiles.data?.[0];
@@ -63,6 +65,20 @@ export default function App() {
 
   const lastRun = stats.data?.last_run;
 
+  // First visit (no searches yet) or "New search": the guided setup.
+  if (wizardOpen || (profiles.isSuccess && profiles.data.length === 0)) {
+    return (
+      <SetupWizard
+        onCancel={profiles.data?.length ? () => setWizardOpen(false) : undefined}
+        onDone={(p) => {
+          setProfileId(p.id);
+          setTab("listings");
+          setWizardOpen(false);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-stone-200/80 bg-sand-50/85 backdrop-blur dark:border-stone-800 dark:bg-stone-950/85">
@@ -96,6 +112,10 @@ export default function App() {
                 ))}
               </select>
             )}
+            <button className="btn-ghost" onClick={() => setWizardOpen(true)} title="Set up another search">
+              <Plus size={16} />
+              <span className="hidden sm:inline">New search</span>
+            </button>
             <button
               className="btn-ghost p-2"
               title={`Theme: ${theme}`}
@@ -157,14 +177,7 @@ export default function App() {
             <p className="font-medium">Can't reach the House Agent API.</p>
             <p className="mt-1 text-sm text-stone-500">Start the backend with <code>house-agent serve</code>.</p>
           </div>
-        ) : !profile ? (
-          <div className="card p-8 text-center">
-            <p className="font-medium">No saved searches yet.</p>
-            <p className="mt-1 text-sm text-stone-500">
-              Import one with <code>house-agent import seed.example.json</code>.
-            </p>
-          </div>
-        ) : tab === "listings" ? (
+        ) : !profile ? null : tab === "listings" ? (
           <ListingsView profile={profile} stats={stats.data} />
         ) : tab === "excluded" ? (
           <ExcludedView profileId={profile.id} />

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
-from .api import listings, profiles
+from .api import listings, profiles, wizard
 from .auth import ensure_default_user
 from .config import settings
 from .db import SessionLocal, init_db
@@ -44,6 +44,7 @@ app.add_middleware(
 )
 app.include_router(profiles.router)
 app.include_router(listings.router)
+app.include_router(wizard.router)
 
 
 @app.get("/api/health")

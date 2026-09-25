@@ -8,15 +8,19 @@ import type { Criteria, Profile, ProfileIn, Region } from "../lib/types";
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /** "M H * * D" <-> {day, time}. Anything more complex is edited as raw cron. */
+// day 7 = every day ("*")
 function parseCron(cron: string): { day: number; time: string } | null {
-  const m = cron.trim().match(/^(\d{1,2}) (\d{1,2}) \* \* ([0-6])$/);
+  const m = cron.trim().match(/^(\d{1,2}) (\d{1,2}) \* \* ([0-6]|\*)$/);
   if (!m) return null;
-  return { day: Number(m[3]), time: `${m[2].padStart(2, "0")}:${m[1].padStart(2, "0")}` };
+  return {
+    day: m[3] === "*" ? 7 : Number(m[3]),
+    time: `${m[2].padStart(2, "0")}:${m[1].padStart(2, "0")}`,
+  };
 }
 
 function toCron(day: number, time: string) {
   const [h, m] = time.split(":").map(Number);
-  return `${m} ${h} * * ${day}`;
+  return `${m} ${h} * * ${day === 7 ? "*" : day}`;
 }
 
 const numOrNull = (v: string) => (v === "" ? null : Number(v));
@@ -36,6 +40,10 @@ export function SettingsView({ profile }: { profile: Profile }) {
   const setRegion = (i: number, patch: Partial<Region>) =>
     setC({ regions: c.regions.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const simple = parseCron(draft.schedule_cron);
+  // Profiles created with "Only when I ask" have no cron; give the toggle something to enable.
+  useEffect(() => {
+    if (draft.enabled && !draft.schedule_cron.trim()) setDraft((d) => ({ ...d, schedule_cron: "0 7 * * 5" }));
+  }, [draft.enabled, draft.schedule_cron]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(strip(profile));
 
   return (
@@ -99,12 +107,13 @@ export function SettingsView({ profile }: { profile: Profile }) {
           Run automatically
         </label>
         <div className="grid gap-4 sm:grid-cols-3">
-          {simple ? (
+          {!draft.schedule_cron.trim() ? null : simple ? (
             <>
               <Field label="Day">
                 <select className="input" value={simple.day}
                   onChange={(e) => setDraft({ ...draft, schedule_cron: toCron(Number(e.target.value), simple.time) })}>
                   {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                  <option value={7}>Every day</option>
                 </select>
               </Field>
               <Field label="Time">

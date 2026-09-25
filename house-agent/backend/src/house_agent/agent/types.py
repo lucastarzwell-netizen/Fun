@@ -31,6 +31,11 @@ class SearchResult(BaseModel):
     listings: list[FoundListing]
     notes: str = Field(default="", description="Problems, e.g. page blocked or rate-limited")
     region_checked: bool = Field(description="False if the region's results could not be loaded")
+    redfin_county_id: int | None = Field(
+        default=None,
+        description="If you used Redfin's results page for this county, the number after "
+        "/county/ in its URL",
+    )
 
 
 class ListingCheck(BaseModel):

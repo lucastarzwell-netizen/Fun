@@ -140,3 +140,31 @@ export interface Stats {
   by_anchor: Record<string, number>;
   last_run: Run | null;
 }
+
+// Setup wizard (backend/src/house_agent/agent/suggest.py)
+export interface SuggestIn {
+  anchors: { name: string; max_drive_hours: number }[];
+  property_types: string[];
+  min_acres: number | null;
+  max_price: number | null;
+}
+
+export interface ResolvedAnchor {
+  input: string;
+  name: string;
+  code: string;
+  state: string;
+}
+
+export interface SuggestedRegion {
+  name: string;
+  state: string;
+  anchor: string;
+  est_drive_hours: number;
+  note: string;
+}
+
+export interface SuggestOut {
+  anchors: ResolvedAnchor[];
+  regions: SuggestedRegion[];
+}

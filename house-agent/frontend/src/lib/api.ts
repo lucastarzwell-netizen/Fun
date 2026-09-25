@@ -7,6 +7,8 @@ import type {
   Run,
   RunDetail,
   Stats,
+  SuggestIn,
+  SuggestOut,
 } from "./types";
 
 export class ApiError extends Error {
@@ -66,5 +68,7 @@ export const api = {
 
   runs: (profileId: number) => request<Run[]>(`/api/profiles/${profileId}/runs`),
   run: (id: number) => request<RunDetail>(`/api/runs/${id}`),
+  suggestRegions: (body: SuggestIn) =>
+    request<SuggestOut>("/api/wizard/regions", { method: "POST", body: json(body) }),
   stats: (profileId: number) => request<Stats>(`/api/profiles/${profileId}/stats`),
 };

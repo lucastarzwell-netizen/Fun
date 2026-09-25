@@ -190,3 +190,27 @@ def test_region_errors_make_run_partial(session):
     assert run.status in ("partial", "failed")
     assert "Lenawee County, MI" in run.summary["skipped_regions"]
     assert "Monroe County, MI (429)" in run.summary["skipped_regions"]
+
+
+def test_run_saves_discovered_redfin_ids(session):
+    user = ensure_default_user(session)
+    criteria = {
+        **CRITERIA,
+        "regions": [{"name": "Hillsdale County", "state": "MI", "anchor": "DTW"}],
+    }
+    profile = SearchProfile(owner_id=user.id, name="No IDs", criteria=criteria)
+    session.add(profile)
+    session.commit()
+    agent = FakeAgent(
+        regions={
+            "Hillsdale County, MI": {
+                "region_checked": True,
+                "listings": [],
+                "redfin_county_id": 1377,
+            }
+        }
+    )
+    _run(session, profile, agent)
+    assert agent.search_calls[0][1] is None  # no ID yet, so no direct URL
+    session.expire_all()
+    assert session.get(SearchProfile, profile.id).criteria["regions"][0]["redfin_county_id"] == 1377
