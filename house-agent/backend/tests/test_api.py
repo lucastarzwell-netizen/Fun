@@ -236,18 +236,47 @@ def test_old_database_gets_new_columns(tmp_path):
     init_db(engine)  # running again is a no-op
 
 
-def test_duplicate_search_names_get_a_number():
+def test_duplicate_search_names_get_a_timestamp():
+    import re
+
+    stamp = r"\((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{1,2}:\d{2} (AM|PM)"
     with TestClient(app) as client:
         body = {**SEED["profile"], "name": "Land near DCA"}
-        names = [client.post("/api/profiles", json=body).json()["name"] for _ in range(3)]
-        assert names == ["Land near DCA", "Land near DCA 2", "Land near DCA 3"]
+        first = client.post("/api/profiles", json=body).json()["name"]
+        second = client.post("/api/profiles", json=body).json()["name"]
+        third = client.post("/api/profiles", json=body).json()["name"]
+        assert first == "Land near DCA"
+        assert re.fullmatch(r"Land near DCA " + stamp + r"\)", second)
+        # Same minute as the second one: still unique.
+        assert re.fullmatch(r"Land near DCA " + stamp + r" #2\)", third)
 
         # Case and spacing don't make a name different.
         r = client.post("/api/profiles", json={**body, "name": "  land  near dca "})
-        assert r.json()["name"] == "land near dca 4"
+        assert r.json()["name"].startswith("land near dca (")
 
-        # Renaming onto a taken name gets a number too; keeping your own name doesn't.
+        # Renaming onto a taken name gets a stamp; keeping your own name doesn't.
         pid = client.post("/api/profiles", json={**body, "name": "Houses near BOS"}).json()["id"]
-        assert client.put(f"/api/profiles/{pid}", json=body).json()["name"] == "Land near DCA 5"
-        again = client.put(f"/api/profiles/{pid}", json={**body, "name": "Land near DCA 5"})
-        assert again.json()["name"] == "Land near DCA 5"
+        renamed = client.put(f"/api/profiles/{pid}", json=body).json()["name"]
+        assert renamed.startswith("Land near DCA (")
+        again = client.put(f"/api/profiles/{pid}", json={**body, "name": renamed})
+        assert again.json()["name"] == renamed
+
+
+def test_unique_name_uses_the_search_time_zone(session):
+    from datetime import UTC, datetime
+
+    from house_agent.api.profiles import unique_name
+    from house_agent.auth import ensure_default_user
+    from house_agent.models import SearchProfile
+
+    user = ensure_default_user(session)
+    session.add(SearchProfile(owner_id=user.id, name="Land near DCA", criteria={}))
+    session.commit()
+    now = datetime(2026, 9, 26, 1, 14, tzinfo=UTC)  # 9:14 PM on Sep 25 in New York
+    assert (
+        unique_name(session, user.id, "Land near DCA", "America/New_York", now=now)
+        == "Land near DCA (Sep 25, 9:14 PM)"
+    )
+    assert unique_name(session, user.id, "Land near DCA", "Not/AZone", now=now) == (
+        "Land near DCA (Sep 26, 1:14 AM)"
+    )

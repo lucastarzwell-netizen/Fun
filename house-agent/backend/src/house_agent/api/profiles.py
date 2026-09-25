@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,8 +28,16 @@ def _norm(name: str) -> str:
     return " ".join(name.split()).casefold()
 
 
-def unique_name(session: Session, owner_id: int, name: str, exclude_id: int | None = None) -> str:
-    """Return `name`, or `name 2`, `name 3`, ... if the user already has a search called that."""
+def unique_name(
+    session: Session,
+    owner_id: int,
+    name: str,
+    tz: str = "UTC",
+    exclude_id: int | None = None,
+    now: datetime | None = None,
+) -> str:
+    """Return `name`, or `name (Sep 25, 9:14 PM)` if the user already has a search called
+    that. The timestamp (in the search's time zone) shows which search is which."""
     name = " ".join(name.split()) or "My search"
     q = select(SearchProfile.name).where(SearchProfile.owner_id == owner_id)
     if exclude_id is not None:
@@ -34,10 +45,18 @@ def unique_name(session: Session, owner_id: int, name: str, exclude_id: int | No
     taken = {_norm(n) for n in session.scalars(q)}
     if _norm(name) not in taken:
         return name
+    try:
+        zone = ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+    stamp = (now or datetime.now(UTC)).astimezone(zone)
+    label = f"{stamp:%b} {stamp.day}, {stamp.hour % 12 or 12}:{stamp:%M %p}"
+    candidate = f"{name} ({label})"
     n = 2
-    while _norm(f"{name} {n}") in taken:
+    while _norm(candidate) in taken:  # two in the same minute
+        candidate = f"{name} ({label} #{n})"
         n += 1
-    return f"{name} {n}"
+    return candidate
 
 
 def _validate_cron(body: ProfileIn) -> None:
@@ -64,7 +83,7 @@ def create_profile(
 ):
     _validate_cron(body)
     data = body.model_dump(mode="json")
-    data["name"] = unique_name(session, user.id, body.name)
+    data["name"] = unique_name(session, user.id, body.name, body.timezone)
     profile = SearchProfile(owner_id=user.id, **data)
     session.add(profile)
     session.commit()
@@ -91,7 +110,7 @@ def update_profile(
     _validate_cron(body)
     profile = owned_profile(session, user, profile_id)
     data = body.model_dump(mode="json")
-    data["name"] = unique_name(session, user.id, body.name, exclude_id=profile.id)
+    data["name"] = unique_name(session, user.id, body.name, body.timezone, exclude_id=profile.id)
     for key, value in data.items():
         setattr(profile, key, value)
     session.commit()
