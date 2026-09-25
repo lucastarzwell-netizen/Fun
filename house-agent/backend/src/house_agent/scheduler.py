@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -29,10 +30,29 @@ def _fire(profile_id: int) -> None:
         log.exception("Scheduled run for profile %s failed to start", profile_id)
 
 
+_DAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def cron_trigger(expr: str, timezone: str) -> CronTrigger:
+    """Build a trigger from a standard 5-field cron expression.
+
+    Standard cron numbers weekdays 0-7 with 0 and 7 = Sunday, but APScheduler 3 numbers
+    them 0 = Monday, so numeric weekdays would all fire a day late. Convert them to names.
+    """
+    fields = expr.split()
+    if len(fields) != 5:
+        raise ValueError(f"Expected 5 fields (minute hour day month weekday), got {len(fields)}")
+    minute, hour, day, month, dow = fields
+    dow = re.sub(r"\b[0-7]\b", lambda m: _DAY_NAMES[int(m.group())], dow)
+    return CronTrigger(
+        minute=minute, hour=hour, day=day, month=month, day_of_week=dow, timezone=timezone
+    )
+
+
 def trigger_for(profile: SearchProfile) -> CronTrigger | None:
     if not profile.enabled or not profile.schedule_cron.strip():
         return None
-    return CronTrigger.from_crontab(profile.schedule_cron, timezone=profile.timezone)
+    return cron_trigger(profile.schedule_cron, profile.timezone)
 
 
 def sync_profile(profile: SearchProfile) -> None:

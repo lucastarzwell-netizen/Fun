@@ -24,9 +24,7 @@ def _out(profile: SearchProfile) -> ProfileOut:
 def _validate_cron(body: ProfileIn) -> None:
     if body.schedule_cron.strip():
         try:
-            from apscheduler.triggers.cron import CronTrigger
-
-            CronTrigger.from_crontab(body.schedule_cron, timezone=body.timezone)
+            scheduler.cron_trigger(body.schedule_cron, body.timezone)
         except Exception as e:
             raise HTTPException(422, f"Invalid schedule: {e}") from e
 
