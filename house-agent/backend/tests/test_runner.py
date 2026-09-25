@@ -100,7 +100,7 @@ def test_recheck_handles_price_cuts_and_removals(session):
         FakeAgent(
             checks={
                 "1 Farm Rd": {"status": "active", "price": 140000, "condition": "good"},
-                "2 Barn Rd": {"status": "pending"},
+                "2 Barn Rd": {"status": "sold"},
                 "3 Creek Rd": {"status": "unknown", "note": "429"},
             }
         ),
@@ -116,7 +116,7 @@ def test_recheck_handles_price_cuts_and_removals(session):
     assert _listing(session, profile, "3 Creek Rd").listing_state == "active"
 
 
-def test_price_rising_above_max_removes_listing(session):
+def test_price_rising_above_max_rejects_listing(session):
     profile = _profile(session)
     _run(
         session,
@@ -128,7 +128,13 @@ def test_price_rising_above_max_removes_listing(session):
     run2 = _run(
         session, profile, FakeAgent(checks={"1 A Rd": {"status": "active", "price": 190000}})
     )
-    assert run2.summary["removed"][0]["reason"] == "no longer matches criteria"
+    assert run2.summary["rejected"] == [
+        {
+            "listing": "1 A Rd, Adrian, MI",
+            "reason": "Price $190,000 is above your $175,000 maximum.",
+        }
+    ]
+    assert _listing(session, profile, "1 A Rd").listing_state == "rejected"
 
 
 def test_excluded_and_dismissed_never_come_back(session):
@@ -172,7 +178,7 @@ def test_removed_listing_found_again_is_relisted(session):
     profile = _profile(session)
     regions = {"Lenawee County, MI": {"region_checked": True, "listings": [_found("1 Farm Rd")]}}
     _run(session, profile, FakeAgent(regions=regions))
-    _run(session, profile, FakeAgent(checks={"1 Farm Rd": {"status": "pending"}}))
+    _run(session, profile, FakeAgent(checks={"1 Farm Rd": {"status": "off_market"}}))
     run3 = _run(session, profile, FakeAgent(regions=regions))
     assert run3.summary["relisted"] == ["1 Farm Rd, Adrian, MI"]
     assert _listing(session, profile, "1 Farm Rd").listing_state == "active"
@@ -257,3 +263,143 @@ def test_stop_request_ends_run_after_current_step(session):
     assert done.status == "cancelled"
     assert len(agent.search_calls) == 1  # Monroe County never searched
     assert done.summary["added"] == ["1 Farm Rd, Adrian, MI"]  # work so far is kept
+
+
+def test_rejections_are_kept_with_reasons(session):
+    profile = _profile(session)
+    wreck = {**_found("2 Wreck Rd", condition="reject"), "reject_reason": "Needs a new foundation."}
+    regions = {
+        "Lenawee County, MI": {
+            "region_checked": True,
+            "listings": [_found("1 Farm Rd"), wreck, _found("3 Pricey Rd", price=250000)],
+        }
+    }
+    run = _run(session, profile, FakeAgent(regions=regions))
+    assert run.summary["added"] == ["1 Farm Rd, Adrian, MI"]
+    assert {r["listing"]: r["reason"] for r in run.summary["rejected"]} == {
+        "2 Wreck Rd, Adrian, MI": "Needs a new foundation.",
+        "3 Pricey Rd, Adrian, MI": "Price $250,000 is above your $175,000 maximum.",
+    }
+    wreck_row = _listing(session, profile, "2 Wreck Rd")
+    assert wreck_row.listing_state == "rejected" and wreck_row.condition == "unverified"
+
+    # A price cut into range on a later run brings it onto the list.
+    cut = {"region_checked": True, "listings": [_found("3 Pricey Rd", price=170000)]}
+    run2 = _run(session, profile, FakeAgent(regions={"Lenawee County, MI": cut}))
+    assert run2.summary["added"] == ["3 Pricey Rd, Adrian, MI"]
+    assert _listing(session, profile, "3 Pricey Rd").listing_state == "active"
+
+
+def test_include_anyway_sticks_and_records_feedback(session):
+    from house_agent.models import AgentFeedback
+    from house_agent.reconcile import include
+
+    profile = _profile(session)
+    wreck = {**_found("2 Wreck Rd", condition="reject"), "reject_reason": "Says needs TLC."}
+    _run(
+        session,
+        profile,
+        FakeAgent(regions={"Lenawee County, MI": {"region_checked": True, "listings": [wreck]}}),
+    )
+    row = _listing(session, profile, "2 Wreck Rd")
+    fb = include(session, row, "Cosmetic TLC is fine for me.")
+    session.commit()
+    assert row.listing_state == "active" and row.user_included and row.condition == "good"
+    assert fb.agent_reason == "Says needs TLC." and fb.user_reason == "Cosmetic TLC is fine for me."
+    assert session.query(AgentFeedback).count() == 1
+
+    # The agent rejecting it again on re-check doesn't undo the user's decision...
+    _run(
+        session,
+        profile,
+        FakeAgent(checks={"2 Wreck Rd": {"status": "active", "condition": "reject"}}),
+    )
+    assert _listing(session, profile, "2 Wreck Rd").listing_state == "active"
+    # ...but it still drops off when it sells.
+    _run(session, profile, FakeAgent(checks={"2 Wreck Rd": {"status": "sold"}}))
+    assert _listing(session, profile, "2 Wreck Rd").listing_state == "removed"
+
+
+def test_pending_listings_go_to_rejected_when_user_skips_them(session):
+    profile = _profile(session)  # include_pending not set: skip pending listings
+    pending = {**_found("5 Contract Ln"), "market_status": "contingent"}
+    run = _run(
+        session,
+        profile,
+        FakeAgent(
+            regions={
+                "Lenawee County, MI": {
+                    "region_checked": True,
+                    "listings": [pending, _found("1 Farm Rd")],
+                }
+            }
+        ),
+    )
+    assert run.summary["added"] == ["1 Farm Rd, Adrian, MI"]
+    assert run.summary["rejected"][0]["reason"].startswith("This listing is under contract.")
+    assert _listing(session, profile, "5 Contract Ln").listing_state == "rejected"
+
+    # A tracked listing that goes pending moves to Rejected too.
+    run2 = _run(session, profile, FakeAgent(checks={"1 Farm Rd": {"status": "pending"}}))
+    assert run2.summary["rejected"][0]["listing"] == "1 Farm Rd, Adrian, MI"
+    row = _listing(session, profile, "1 Farm Rd")
+    assert row.listing_state == "rejected" and row.market_status == "pending"
+
+
+def test_pending_listings_kept_when_user_includes_them(session):
+    profile = _profile(session)
+    profile.criteria = {**profile.criteria, "include_pending": True}
+    session.commit()
+    pending = {**_found("5 Contract Ln"), "market_status": "pending"}
+    run = _run(
+        session,
+        profile,
+        FakeAgent(regions={"Lenawee County, MI": {"region_checked": True, "listings": [pending]}}),
+    )
+    assert run.summary["added"] == ["5 Contract Ln, Adrian, MI"]
+    row = _listing(session, profile, "5 Contract Ln")
+    assert row.listing_state == "active" and row.market_status == "pending"
+
+    # Back on the market: status updates, and it stays listed.
+    run2 = _run(session, profile, FakeAgent(checks={"5 Contract Ln": {"status": "active"}}))
+    assert run2.summary["status_changes"] == [
+        {"listing": "5 Contract Ln, Adrian, MI", "old": "pending", "new": "active"}
+    ]
+    assert _listing(session, profile, "5 Contract Ln").market_status == "active"
+
+
+def test_feedback_and_rejections_reach_the_agent(session):
+    from house_agent.reconcile import include
+
+    profile = _profile(session)
+    wreck = {**_found("2 Wreck Rd", condition="reject"), "reject_reason": "Says needs TLC."}
+    _run(
+        session,
+        profile,
+        FakeAgent(
+            regions={
+                "Lenawee County, MI": {
+                    "region_checked": True,
+                    "listings": [wreck, _found("3 Mold Rd", condition="reject")],
+                }
+            }
+        ),
+    )
+    include(session, _listing(session, profile, "2 Wreck Rd"), "TLC is fine.")
+    session.commit()
+
+    seen = {}
+
+    class Spy(FakeAgent):
+        def search_region(self, criteria, *args):
+            seen.setdefault("feedback", criteria.feedback)
+            return super().search_region(criteria, *args)
+
+    agent = Spy()
+    _run(session, profile, agent)
+    assert seen["feedback"] == [
+        '2 Wreck Rd, Adrian, MI: you rejected it ("Says needs TLC."); '
+        'the buyer included it anyway: "TLC is fine."'
+    ]
+    rejected_arg = agent.search_calls[0][4]
+    assert rejected_arg == ["3 Mold Rd, Adrian, MI (was $150,000)"]

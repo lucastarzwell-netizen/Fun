@@ -63,7 +63,13 @@ class Criteria(BaseModel):
     )
     condition_rules: str = DEFAULT_CONDITION_RULES
     land: LandPrefs | None = None
+    include_pending: bool = Field(
+        default=False,
+        description="Also list pending / under-contract (contingent) listings",
+    )
     extra_instructions: str = ""
+    # Filled in by the runner from AgentFeedback rows; never stored on the profile.
+    feedback: list[str] = Field(default=[], exclude=True)
 
 
 # ---- profiles ---------------------------------------------------------------------------
@@ -88,7 +94,7 @@ class ProfileOut(ProfileIn):
 
 # ---- listings ---------------------------------------------------------------------------
 
-ListingState = Literal["active", "removed", "dismissed"]
+ListingState = Literal["active", "removed", "dismissed", "rejected"]
 Condition = Literal["good", "needs_updating", "unverified"]
 
 
@@ -126,6 +132,9 @@ class ListingOut(BaseModel):
     url: str | None
     listing_state: ListingState
     removed_reason: str | None
+    reject_reason: str | None = None
+    user_included: bool = False
+    market_status: str = "active"
     reviewed: bool
     first_seen: date
     last_checked: date | None
@@ -139,6 +148,21 @@ class ListingDetailOut(ListingOut):
 
 class ListingPatch(BaseModel):
     reviewed: bool | None = None
+
+
+class IncludeIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class FeedbackOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    listing_id: int | None
+    listing_label: str
+    agent_reason: str
+    user_reason: str
+    created_at: UTCDatetime
 
 
 class DismissIn(BaseModel):
@@ -195,5 +219,6 @@ class StatsOut(BaseModel):
     price_changes_last_run: int
     removed_last_run: int
     excluded: int
+    rejected: int = 0
     by_anchor: dict[str, int]
     last_run: RunOut | None

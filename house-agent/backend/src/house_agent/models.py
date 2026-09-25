@@ -75,6 +75,7 @@ class SearchProfile(Base):
 ACTIVE = "active"
 REMOVED = "removed"  # sold / pending / off-market / no longer matches
 DISMISSED = "dismissed"  # ruled out by the user (also recorded in ExcludedAddress)
+REJECTED = "rejected"  # the agent looked and left it out; reject_reason says why
 
 # Listing.condition values (mirror the sheet's Status column)
 GOOD = "good"  # "Active"
@@ -108,6 +109,11 @@ class Listing(Base):
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     listing_state: Mapped[str] = mapped_column(String(20), default=ACTIVE, index=True)
     removed_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # active | pending | contingent (the last two only when the search includes them)
+    market_status: Mapped[str] = mapped_column(String(20), default="active")
+    # The user overrode a rejection ("Include anyway"); later runs won't re-reject it.
+    user_included: Mapped[bool] = mapped_column(Boolean, default=False)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     first_seen: Mapped[date] = mapped_column(Date)
     last_checked: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -160,6 +166,24 @@ class ExcludedAddress(Base):
     excluded_on: Mapped[date] = mapped_column(Date)
 
     profile: Mapped[SearchProfile] = relationship(back_populates="exclusions")
+
+
+class AgentFeedback(Base):
+    """Why the user overrode the agent. Sent with every later search so it learns."""
+
+    __tablename__ = "agent_feedback"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("search_profiles.id", ondelete="CASCADE"), index=True
+    )
+    listing_id: Mapped[int | None] = mapped_column(
+        ForeignKey("listings.id", ondelete="SET NULL"), nullable=True
+    )
+    listing_label: Mapped[str] = mapped_column(String(400))
+    agent_reason: Mapped[str] = mapped_column(Text, default="")
+    user_reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Run(Base):

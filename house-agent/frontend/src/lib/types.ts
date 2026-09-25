@@ -26,6 +26,7 @@ export interface Criteria {
   include_nearby: boolean;
   condition_rules: string;
   land: LandPrefs | null;
+  include_pending: boolean;
   extra_instructions: string;
 }
 
@@ -53,7 +54,7 @@ export interface Profile extends ProfileIn {
 }
 
 export type Condition = "good" | "needs_updating" | "unverified";
-export type ListingState = "active" | "removed" | "dismissed";
+export type ListingState = "active" | "removed" | "dismissed" | "rejected";
 
 export interface Listing {
   id: number;
@@ -75,6 +76,9 @@ export interface Listing {
   url: string | null;
   listing_state: ListingState;
   removed_reason: string | null;
+  reject_reason: string | null;
+  user_included: boolean;
+  market_status: "active" | "pending" | "contingent";
   reviewed: boolean;
   first_seen: string;
   last_checked: string | null;
@@ -118,6 +122,8 @@ export interface RunSummary {
   removed?: { listing: string; reason: string }[];
   price_changes?: { listing: string; old: number; new: number }[];
   relisted?: string[];
+  rejected?: { listing: string; reason: string }[];
+  status_changes?: { listing: string; old: string; new: string }[];
   condition_changes?: { listing: string; old: string; new: string }[];
   skipped_excluded?: string[];
   skipped_regions?: string[];
@@ -155,6 +161,7 @@ export interface Stats {
   price_changes_last_run: number;
   removed_last_run: number;
   excluded: number;
+  rejected: number;
   by_anchor: Record<string, number>;
   last_run: Run | null;
 }
@@ -185,4 +192,13 @@ export interface SuggestedRegion {
 export interface SuggestOut {
   anchors: ResolvedAnchor[];
   regions: SuggestedRegion[];
+}
+
+export interface Feedback {
+  id: number;
+  listing_id: number | null;
+  listing_label: string;
+  agent_reason: string;
+  user_reason: string;
+  created_at: string;
 }

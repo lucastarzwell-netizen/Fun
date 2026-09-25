@@ -1,5 +1,6 @@
 import type {
   Excluded,
+  Feedback,
   Listing,
   ListingDetail,
   Profile,
@@ -67,6 +68,11 @@ export const api = {
     request<Listing>(`/api/listings/${id}`, { method: "PATCH", body: json({ reviewed }) }),
   dismiss: (id: number, reason: string) =>
     request<Excluded>(`/api/listings/${id}/dismiss`, { method: "POST", body: json({ reason }) }),
+
+  include: (id: number, reason: string) =>
+    request<Listing>(`/api/listings/${id}/include`, { method: "POST", body: json({ reason }) }),
+  feedback: (profileId: number) => request<Feedback[]>(`/api/profiles/${profileId}/feedback`),
+  deleteFeedback: (id: number) => request<void>(`/api/feedback/${id}`, { method: "DELETE" }),
 
   excluded: (profileId: number) => request<Excluded[]>(`/api/profiles/${profileId}/excluded`),
   addExcluded: (

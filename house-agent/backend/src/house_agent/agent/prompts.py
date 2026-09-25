@@ -58,8 +58,10 @@ def criteria_block(c: Criteria) -> str:
     if c.min_baths and c.property_types != ["land"]:
         lines.append(f"Baths: at least {c.min_baths:g}{homes_only}")
     lines.append(
-        "Status: active listings only (exclude pending, contingent, under contract, sold, "
-        "off-market, auctions, short sales)."
+        "Status: active listings, and also pending / contingent / under-contract ones: report "
+        "those with market_status pending or contingent (the app applies the buyer's choice "
+        "about them). If the results page hides them, use its status filter to show them. "
+        "Skip sold and off-market listings, auctions and short sales."
     )
     if c.anchors:
         lines.append("Anchors (estimate drive time to the nearest one; exclude beyond its limit):")
@@ -77,6 +79,11 @@ def criteria_block(c: Criteria) -> str:
         lines.append(land_block(c.land))
     if c.extra_instructions.strip():
         lines.append("Other instructions:\n" + c.extra_instructions.strip())
+    if c.feedback:
+        lines.append(
+            "The buyer's corrections to your earlier rejections (apply the same thinking to "
+            "similar listings):\n" + "\n".join(f"  - {f}" for f in c.feedback)
+        )
     return "\n".join(lines)
 
 
@@ -99,6 +106,7 @@ def search_prompt(
     url: str | None,
     known: list[str],
     excluded: list[str],
+    rejected: list[str] | None = None,
 ) -> str:
     where = (
         f"Start from this search page: {url}\nCheck that the page title names the right area."
@@ -123,10 +131,19 @@ def search_prompt(
         parts.append(
             "Ruled out by the buyer; never report these:\n" + "\n".join(f"- {e}" for e in excluded)
         )
+    if rejected:
+        parts.append(
+            "You rejected these before; skip them unless the price shown now is lower than "
+            "listed here:\n" + "\n".join(f"- {r}" for r in rejected)
+        )
     parts.append(
         "For every other listing that matches the price/lot/type filters, open its listing "
-        "page, read the description, and label its condition. Report matches (including "
-        "needs_updating ones; you may leave out rejects). Then call submit_search_results."
+        "page, read the description, and label its condition. Report every listing you "
+        "opened: the matches, and the ones you reject (condition reject, with a one-sentence "
+        'reject_reason addressed to the buyer naming the rule it failed, e.g. "Listing says '
+        'it needs a new roof and foundation work; you asked for cosmetic updates only."). '
+        "The buyer reviews rejections, so be specific. Don't report listings the results page "
+        "already shows fail price, lot size or property type. Then call submit_search_results."
     )
     return "\n\n".join(parts)
 
@@ -140,7 +157,8 @@ def check_prompt(c: Criteria, items: list[dict]) -> str:
     return (
         "Re-check these tracked listings. For each one, open its listing page (search for it "
         "if there's no URL or the URL fails) and report its current status and price. Also "
-        "re-read the description and label its condition.\n\n"
+        "re-read the description and label its condition. If you label one reject, give a "
+        "one-sentence reject_reason addressed to the buyer.\n\n"
         f"{rows}\n\nBuyer's criteria:\n{criteria_block(c)}\n\n"
         "Report every ref exactly once, using status 'unknown' if you couldn't load it. Then "
         "call submit_check_results."

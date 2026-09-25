@@ -22,8 +22,16 @@ class FoundListing(BaseModel):
     anchor: str | None = Field(default=None, description="Code of the nearest anchor")
     drive_hours: float | None = Field(default=None, description="Estimated drive to the anchor")
     condition: Literal["good", "needs_updating", "unverified", "reject"]
+    market_status: Literal["active", "pending", "contingent"] = Field(
+        default="active", description="Listing status as shown on the listing page"
+    )
     condition_notes: str = Field(
         default="", description="Short notes: year built, updates, repair language, extras"
+    )
+    reject_reason: str = Field(
+        default="",
+        description="Required when condition is reject: one sentence, addressed to the buyer, "
+        "naming the rule it failed",
     )
 
 
@@ -45,6 +53,7 @@ class ListingCheck(BaseModel):
     url: str | None = None
     condition: Literal["good", "needs_updating", "unverified", "reject"] = "unverified"
     condition_notes: str = ""
+    reject_reason: str = Field(default="", description="Required when condition is reject")
     note: str = ""
 
 

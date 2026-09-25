@@ -70,6 +70,7 @@ function headline(run: Run) {
     ...(run.status === "cancelled" ? ["Stopped early"] : []),
     `${s.added?.length ?? 0} added`,
     `${s.removed?.length ?? 0} removed`,
+    `${s.rejected?.length ?? 0} rejected`,
     `${s.price_changes?.length ?? 0} price changes`,
   ];
   return parts.join(" · ");
@@ -93,6 +94,11 @@ function RunDetail({ id }: { id: number }) {
         items={s.price_changes?.map((p) => `${p.listing}: ${money(p.old)} → ${money(p.new)}`)}
       />
       <Section title="Back on market" items={s.relisted} />
+      <Section title="Rejected" items={s.rejected?.map((r) => `${r.listing} — ${r.reason}`)} />
+      <Section
+        title="Status changes"
+        items={s.status_changes?.map((c) => `${c.listing}: ${c.old} → ${c.new}`.replaceAll("contingent", "under contract"))}
+      />
       <Section title="Skipped (excluded)" items={s.skipped_excluded} />
       <Section title="Regions not checked" items={s.skipped_regions} tone="amber" />
       <Section title="Errors" items={s.errors} tone="red" />

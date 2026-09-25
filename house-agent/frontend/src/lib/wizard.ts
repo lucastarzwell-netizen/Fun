@@ -127,6 +127,7 @@ export interface WizardAnswers {
   dealBreakers: DealBreaker[];
   land: LandPrefs;
   notes: string;
+  includePending: boolean;
   frequency: Frequency;
   day: number;
   time: string;
@@ -155,6 +156,7 @@ export function initialAnswers(): WizardAnswers {
       avoid: ["Landlocked (no legal access)", "Auctions and tax sales"],
     },
     notes: "",
+    includePending: false,
     frequency: "weekly",
     day: 5,
     time: "07:00",
@@ -213,6 +215,7 @@ export function toProfile(a: WizardAnswers): ProfileIn {
     include_nearby: true,
     condition_rules: CONDITIONS[a.condition].rules,
     land: hasLand(a) ? a.land : null,
+    include_pending: a.includePending,
     extra_instructions: extra,
   };
   return {

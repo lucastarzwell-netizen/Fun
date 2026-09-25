@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, History, Home, Loader2, LogOut, Monitor, Moon, Play, Plus, Settings2, Square, Sun } from "lucide-react";
+import { Ban, CircleSlash, History, Home, Loader2, LogOut, Monitor, Moon, Play, Plus, Settings2, Square, Sun } from "lucide-react";
 import { api } from "./lib/api";
 import { cx, dateTime } from "./lib/format";
 import { useTheme } from "./lib/theme";
@@ -8,15 +8,17 @@ import type { RunProgress } from "./lib/types";
 import { useLocal } from "./lib/useLocal";
 import { ListingsView } from "./components/ListingsView";
 import { ExcludedView } from "./components/ExcludedView";
+import { RejectedView } from "./components/RejectedView";
 import { RunsView } from "./components/RunsView";
 import { SettingsView } from "./components/SettingsView";
 import { SetupWizard } from "./components/wizard/SetupWizard";
 import { LoginScreen } from "./components/LoginScreen";
 
-type Tab = "listings" | "excluded" | "runs" | "settings";
+type Tab = "listings" | "rejected" | "excluded" | "runs" | "settings";
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "listings", label: "Listings", icon: <Home size={16} /> },
+  { key: "rejected", label: "Rejected", icon: <CircleSlash size={16} /> },
   { key: "excluded", label: "Excluded", icon: <Ban size={16} /> },
   { key: "runs", label: "Runs", icon: <History size={16} /> },
   { key: "settings", label: "Search settings", icon: <Settings2 size={16} /> },
@@ -182,8 +184,10 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
             >
               {t.icon}
               {t.label}
-              {t.key === "excluded" && stats.data ? (
-                <span className="rounded-full bg-stone-200 px-1.5 text-xs dark:bg-stone-800">{stats.data.excluded}</span>
+              {(t.key === "excluded" || t.key === "rejected") && stats.data ? (
+                <span className="rounded-full bg-stone-200 px-1.5 text-xs dark:bg-stone-800">
+                  {t.key === "excluded" ? stats.data.excluded : stats.data.rejected}
+                </span>
               ) : null}
             </button>
           ))}
@@ -213,6 +217,8 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
           </div>
         ) : !profile ? null : tab === "listings" ? (
           <ListingsView profile={profile} stats={stats.data} />
+        ) : tab === "rejected" ? (
+          <RejectedView profileId={profile.id} />
         ) : tab === "excluded" ? (
           <ExcludedView profileId={profile.id} />
         ) : tab === "runs" ? (

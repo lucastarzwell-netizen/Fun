@@ -11,7 +11,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
-from ..models import ACTIVE, DISMISSED, ExcludedAddress, Listing, Run, SearchProfile
+from ..models import (
+    ACTIVE,
+    DISMISSED,
+    REJECTED,
+    AgentFeedback,
+    ExcludedAddress,
+    Listing,
+    Run,
+    SearchProfile,
+)
 from ..reconcile import RunChanges, apply_check, apply_found, excluded_keys
 from ..schemas import Criteria
 from .claude_agent import AgentError, ClaudeSearchAgent, SearchAgent
@@ -112,6 +121,17 @@ def execute_run(session: Session, run_id: int, agent: SearchAgent | None = None)
 
 def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAgent) -> Run:
     criteria = Criteria.model_validate(profile.criteria)
+    criteria.feedback = [
+        f"{f.listing_label}: you rejected it"
+        + (f' ("{f.agent_reason}")' if f.agent_reason else "")
+        + f'; the buyer included it anyway: "{f.user_reason}"'
+        for f in session.scalars(
+            select(AgentFeedback)
+            .where(AgentFeedback.profile_id == profile.id)
+            .order_by(AgentFeedback.id.desc())
+            .limit(25)
+        )
+    ]
     today = _today(profile)
     changes = RunChanges()
     errors: list[str] = []
@@ -194,6 +214,16 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
                 )
             )
         ]
+        rejected = [
+            f"{a}, {c}, {st} (was ${p:,.0f})" if p is not None else f"{a}, {c}, {st}"
+            for a, c, st, p in session.execute(
+                select(Listing.address, Listing.city, Listing.state, Listing.price).where(
+                    Listing.profile_id == profile.id,
+                    Listing.listing_state == REJECTED,
+                    Listing.state == region.state.upper(),
+                )
+            )
+        ]
         url = redfin_county_url(region, criteria)
         logline(f"Searching {label}")
         _progress(
@@ -201,7 +231,7 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         )
         try:
             result = agent.search_region(
-                criteria, label, region.anchor, url, known, excluded_labels
+                criteria, label, region.anchor, url, known, excluded_labels, rejected
             )
         except AgentError as e:
             errors.append(f"{label}: {e}")

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { dateTime } from "../lib/format";
@@ -112,6 +112,25 @@ export function SettingsView({ profile }: { profile: Profile }) {
               onChange={(e) => setC({ min_baths: numOrNull(e.target.value) })} />
           </Field>
         </div>
+      </Panel>
+
+      <Panel title="Pending and under-contract listings">
+        <label className="flex items-start gap-2 text-sm">
+          <input type="radio" className="mt-0.5 size-4 accent-pine-600" checked={!c.include_pending}
+            onChange={() => setC({ include_pending: false })} />
+          <span>
+            <span className="font-medium">Leave them out.</span>{" "}
+            <span className="text-stone-500">They go to the Rejected tab, where you can include any of them.</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="radio" className="mt-0.5 size-4 accent-pine-600" checked={c.include_pending}
+            onChange={() => setC({ include_pending: true })} />
+          <span>
+            <span className="font-medium">Include them</span>{" "}
+            <span className="text-stone-500">with your listings, marked Pending or Under contract.</span>
+          </span>
+        </label>
       </Panel>
 
       <Panel title="Schedule">
@@ -245,7 +264,44 @@ export function SettingsView({ profile }: { profile: Profile }) {
             onChange={(e) => setC({ extra_instructions: e.target.value })} />
         </Field>
       </Panel>
+      <FeedbackPanel profileId={profile.id} />
     </form>
+  );
+}
+
+function FeedbackPanel({ profileId }: { profileId: number }) {
+  const qc = useQueryClient();
+  const { data = [] } = useQuery({ queryKey: ["feedback", profileId], queryFn: () => api.feedback(profileId) });
+  const remove = useMutation({
+    mutationFn: api.deleteFeedback,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["feedback", profileId] }),
+  });
+  return (
+    <Panel
+      title="What you've taught the agent"
+      hint="Each time you include a rejected listing, your reason is sent with every future search. Remove any that no longer apply."
+    >
+      {data.length === 0 ? (
+        <p className="text-sm text-stone-500">Nothing yet. Use Include anyway on the Rejected tab to add some.</p>
+      ) : (
+        <ul className="divide-y divide-stone-100 text-sm dark:divide-stone-800">
+          {data.map((f) => (
+            <li key={f.id} className="flex items-start gap-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">"{f.user_reason}"</div>
+                <div className="text-stone-500">
+                  {f.listing_label}
+                  {f.agent_reason && <> · agent had said: {f.agent_reason}</>}
+                </div>
+              </div>
+              <button type="button" className="btn-ghost p-2" title="Remove" onClick={() => remove.mutate(f.id)}>
+                <Trash2 size={16} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }
 

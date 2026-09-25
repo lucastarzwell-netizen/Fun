@@ -75,3 +75,15 @@ def test_bed_bath_filters_never_hide_land():
 
     homes = Criteria(property_types=["house"], min_beds=3)
     assert "min-beds=3" in redfin_county_url(region, homes)
+
+
+def test_prompt_includes_feedback_and_previous_rejections():
+    from house_agent.agent.prompts import search_prompt
+
+    c = Criteria(feedback=['1 A Rd: you rejected it; the buyer included it anyway: "ok"'])
+    text = search_prompt(c, "X County, MI", "DTW", None, [], [], ["2 B Rd, X, MI (was $100,000)"])
+    assert "The buyer's corrections to your earlier rejections" in text
+    assert "skip them unless the price shown now is lower" in text
+    assert "reject_reason" in text
+    # Feedback is runtime-only; it never gets saved with the profile.
+    assert "feedback" not in c.model_dump()

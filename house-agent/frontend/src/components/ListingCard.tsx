@@ -48,6 +48,9 @@ export function ListingCard({
           <Badge tone={status.tone}>{status.label}</Badge>
           {l.is_new && l.condition === "needs_updating" && <Badge tone="amber">Needs updating</Badge>}
           {cut && <Badge tone="violet">Price cut</Badge>}
+          {l.market_status === "pending" && <Badge tone="amber">Pending</Badge>}
+          {l.market_status === "contingent" && <Badge tone="amber">Under contract</Badge>}
+          {l.user_included && <Badge tone="gray">Included by you</Badge>}
         </div>
       </div>
 

@@ -39,6 +39,7 @@ class SearchAgent(Protocol):
         url: str | None,
         known: list[str],
         excluded: list[str],
+        rejected: list[str] | None = None,
     ) -> SearchResult: ...
 
     def check_listings(self, criteria: Criteria, items: list[dict]) -> CheckResult: ...
@@ -123,8 +124,12 @@ class ClaudeSearchAgent:
 
     # -- public API --------------------------------------------------------------------
 
-    def search_region(self, criteria, region_label, region_anchor, url, known, excluded):
-        prompt = prompts.search_prompt(criteria, region_label, region_anchor, url, known, excluded)
+    def search_region(
+        self, criteria, region_label, region_anchor, url, known, excluded, rejected=None
+    ):
+        prompt = prompts.search_prompt(
+            criteria, region_label, region_anchor, url, known, excluded, rejected
+        )
         return self._run(prompt, SEARCH_TOOL, SearchResult, fetch_budget=30)
 
     def check_listings(self, criteria, items):

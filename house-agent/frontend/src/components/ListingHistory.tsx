@@ -21,6 +21,14 @@ function describe(e: ListingEvent) {
       return `Ruled out${e.note ? `: ${e.note}` : ""}`;
     case "restored":
       return "Restored from Excluded";
+    case "rejected":
+      return `Rejected: ${e.note ?? ""}`;
+    case "now_matches":
+      return "Now matches your search";
+    case "included":
+      return `Included by you${e.note ? `: "${e.note}"` : ""}`;
+    case "status_change":
+      return `Status ${e.old_value} → ${e.new_value}`.replace("contingent", "under contract");
     case "check_failed":
       return `Couldn't check listing${e.note ? ` (${e.note})` : ""}`;
     default:

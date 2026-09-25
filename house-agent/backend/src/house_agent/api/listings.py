@@ -14,17 +14,21 @@ from ..db import get_session
 from ..models import (
     ACTIVE,
     NEEDS_UPDATING,
+    REJECTED,
+    AgentFeedback,
     ExcludedAddress,
     Listing,
     ListingEvent,
     Run,
     User,
 )
-from ..reconcile import dismiss, restore
+from ..reconcile import dismiss, include, restore
 from ..schemas import (
     DismissIn,
     ExcludedIn,
     ExcludedOut,
+    FeedbackOut,
+    IncludeIn,
     ListingDetailOut,
     ListingOut,
     ListingPatch,
@@ -57,7 +61,7 @@ def _to_out(listing: Listing, last_run: Run | None, cls=ListingOut):
 @router.get("/profiles/{profile_id}/listings", response_model=list[ListingOut])
 def list_listings(
     profile_id: int,
-    state: Literal["active", "removed", "dismissed", "all"] = "active",
+    state: Literal["active", "removed", "dismissed", "rejected", "all"] = "active",
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
@@ -109,6 +113,53 @@ def dismiss_listing(
     excl = dismiss(session, listing, body.reason, date.today())
     session.commit()
     return excl
+
+
+@router.post("/listings/{listing_id}/include", response_model=ListingOut)
+def include_listing(
+    listing_id: int,
+    body: IncludeIn,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """Override a rejection. The reason is saved and sent to the agent on later searches."""
+    listing = owned_listing(session, user, listing_id)
+    if listing.listing_state != REJECTED:
+        raise HTTPException(409, "Only rejected listings can be included")
+    include(session, listing, body.reason)
+    session.commit()
+    return _to_out(listing, last_finished_run(session, listing.profile_id))
+
+
+# ---- agent feedback ---------------------------------------------------------------------
+
+
+@router.get("/profiles/{profile_id}/feedback", response_model=list[FeedbackOut])
+def list_feedback(
+    profile_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    owned_profile(session, user, profile_id)
+    return session.scalars(
+        select(AgentFeedback)
+        .where(AgentFeedback.profile_id == profile_id)
+        .order_by(AgentFeedback.id.desc())
+    ).all()
+
+
+@router.delete("/feedback/{feedback_id}", status_code=204)
+def delete_feedback(
+    feedback_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    fb = session.get(AgentFeedback, feedback_id)
+    if fb is None:
+        raise HTTPException(404, "Not found")
+    owned_profile(session, user, fb.profile_id)
+    session.delete(fb)
+    session.commit()
 
 
 # ---- exclusions -------------------------------------------------------------------------
@@ -268,6 +319,12 @@ def stats(
         removed_last_run=count_events("removed"),
         excluded=session.scalar(
             select(func.count(ExcludedAddress.id)).where(ExcludedAddress.profile_id == profile_id)
+        )
+        or 0,
+        rejected=session.scalar(
+            select(func.count(Listing.id)).where(
+                Listing.profile_id == profile_id, Listing.listing_state == REJECTED
+            )
         )
         or 0,
         by_anchor=by_anchor,

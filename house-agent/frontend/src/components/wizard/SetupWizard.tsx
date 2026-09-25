@@ -193,6 +193,25 @@ export function SetupWizard({
                   );
                 })}
               </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-stone-700 dark:text-stone-300">
+                  Listings that are pending, under contract, or conditionally sold
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <OptionCard
+                    selected={!a.includePending}
+                    title="Leave them out"
+                    hint="They'll be on the Rejected tab, where you can still include any of them."
+                    onClick={() => set({ includePending: false })}
+                  />
+                  <OptionCard
+                    selected={a.includePending}
+                    title="Include them"
+                    hint="Shown with your listings, marked Pending or Under contract."
+                    onClick={() => set({ includePending: true })}
+                  />
+                </div>
+              </div>
             </Question>
           )}
 
@@ -467,6 +486,9 @@ export function SetupWizard({
               <dl className="card divide-y divide-stone-100 text-sm dark:divide-stone-800">
                 <Row label="Home types" onEdit={() => setStep("type")}>
                   {a.propertyTypes.map((t) => PROPERTY_TYPES.find((p) => p.key === t)?.label).join(", ")}
+                  <span className="text-stone-500">
+                    {a.includePending ? " · including pending" : " · active listings only"}
+                  </span>
                 </Row>
                 <Row label="Price" onEdit={() => setStep("budget")}>
                   {a.minPrice ? `${money(a.minPrice)} – ${money(a.maxPrice)}` : `Up to ${money(a.maxPrice)}`}

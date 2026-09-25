@@ -167,3 +167,70 @@ def test_stop_endpoint(tmp_path):
         finally:
             runner._running.discard(pid)
         assert client.post("/api/runs/999/stop").status_code == 404
+
+
+def test_rejected_tab_include_and_feedback(tmp_path):
+    from house_agent.db import SessionLocal
+    from house_agent.models import Listing
+
+    pid = _seed(tmp_path)
+    with SessionLocal() as s:
+        row = s.query(Listing).filter_by(address="2 Barn Rd").one()
+        row.listing_state = "rejected"
+        row.reject_reason = "Listing says it needs a new roof."
+        s.commit()
+        lid = row.id
+    with TestClient(app) as client:
+        rejected = client.get(f"/api/profiles/{pid}/listings?state=rejected").json()
+        assert [(x["address"], x["reject_reason"]) for x in rejected] == [
+            ("2 Barn Rd", "Listing says it needs a new roof.")
+        ]
+        assert client.get(f"/api/profiles/{pid}/stats").json()["rejected"] == 1
+
+        assert client.post(f"/api/listings/{lid}/include", json={"reason": "x"}).status_code == 422
+        r = client.post(f"/api/listings/{lid}/include", json={"reason": "I'll replace the roof."})
+        assert r.status_code == 200
+        assert r.json()["listing_state"] == "active" and r.json()["user_included"] is True
+        assert (
+            client.post(f"/api/listings/{lid}/include", json={"reason": "again"}).status_code == 409
+        )
+
+        fb = client.get(f"/api/profiles/{pid}/feedback").json()
+        assert fb[0]["agent_reason"] == "Listing says it needs a new roof."
+        assert fb[0]["user_reason"] == "I'll replace the roof."
+        assert client.delete(f"/api/feedback/{fb[0]['id']}").status_code == 204
+        assert client.get(f"/api/profiles/{pid}/feedback").json() == []
+
+
+def test_old_database_gets_new_columns(tmp_path):
+    import sqlite3
+
+    from sqlalchemy import inspect
+
+    from house_agent.db import init_db, make_engine
+
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(path)  # listings table as created by the first release
+    con.execute(
+        "CREATE TABLE listings (id INTEGER PRIMARY KEY, profile_id INTEGER, address_key "
+        "VARCHAR(300), address VARCHAR(300), city VARCHAR(120), state VARCHAR(2), "
+        "condition VARCHAR(20), condition_notes TEXT, listing_state VARCHAR(20), "
+        "reviewed BOOLEAN, first_seen DATE)"
+    )
+    con.execute(
+        "INSERT INTO listings (profile_id, address_key, address, city, state, condition, "
+        "condition_notes, listing_state, reviewed, first_seen) "
+        "VALUES (1, 'k', '1 A Rd', 'X', 'MI', 'good', '', 'active', 0, '2026-09-25')"
+    )
+    con.commit()
+    con.close()
+    engine = make_engine(f"sqlite:///{path}")
+    init_db(engine)
+    cols = {c["name"] for c in inspect(engine).get_columns("listings")}
+    assert {"reject_reason", "user_included", "market_status"} <= cols
+    with engine.connect() as conn:
+        from sqlalchemy import text
+
+        row = conn.execute(text("SELECT user_included, market_status FROM listings")).one()
+    assert tuple(row) == (0, "active")
+    init_db(engine)  # running again is a no-op

@@ -31,7 +31,8 @@ export function ExcludedView({ profileId }: { profileId: number }) {
       <div>
         <h2 className="font-display text-xl font-semibold">Excluded addresses</h2>
         <p className="text-sm text-stone-500">
-          Houses you've ruled out. The agent never adds these back, even if they still match.
+          Listings you dismissed. The agent never adds these back, even if they still match. (Listings
+          the agent left out are on the Rejected tab.)
         </p>
       </div>
 
