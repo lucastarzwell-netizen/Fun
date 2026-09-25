@@ -52,8 +52,13 @@ export function ListingCard({
       </div>
 
       <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 px-4 text-sm text-stone-600 dark:text-stone-400">
-        <Fact icon={<BedDouble size={15} />} label={l.beds === 1 ? "bed" : "beds"} value={num(l.beds)} />
-        <Fact icon={<Bath size={15} />} label={l.baths === 1 ? "bath" : "baths"} value={num(l.baths)} />
+        {/* Land has no bedrooms or bathrooms; don't show empty placeholders. */}
+        {(l.beds != null || l.baths != null) && (
+          <>
+            <Fact icon={<BedDouble size={15} />} label={l.beds === 1 ? "bed" : "beds"} value={num(l.beds)} />
+            <Fact icon={<Bath size={15} />} label={l.baths === 1 ? "bath" : "baths"} value={num(l.baths)} />
+          </>
+        )}
         <Fact icon={<Trees size={15} />} label={l.acres === 1 ? "acre" : "acres"} value={num(l.acres, 2)} />
         <Fact
           icon={<Car size={15} />}
@@ -78,7 +83,7 @@ export function ListingCard({
         </div>
       )}
 
-      <div className="mt-3 flex items-center gap-1 border-t border-stone-100 px-2 py-2 dark:border-stone-800">
+      <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-stone-100 px-2 py-2 dark:border-stone-800">
         <button
           onClick={() => onReviewed(!l.reviewed)}
           className={cx(
@@ -113,9 +118,10 @@ export function ListingCard({
           <button
             onClick={onDismiss}
             className="btn px-2.5 py-1.5 text-stone-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-900/30"
-            title="Rule out"
+            title="Rule out this listing"
           >
             <X size={15} />
+            Rule out
           </button>
         </div>
       </div>

@@ -31,7 +31,7 @@ export function DismissDialog({
         }}
       >
         <div>
-          <h2 className="font-display text-lg font-semibold">Rule out this house?</h2>
+          <h2 className="font-display text-lg font-semibold">Rule out this listing?</h2>
           <p className="mt-1 text-sm text-stone-500">
             {listing.address}, {listing.city} will move to the Excluded list and the agent won't add it
             back. You can restore it later.
