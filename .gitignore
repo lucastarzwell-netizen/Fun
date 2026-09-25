@@ -13,3 +13,4 @@ house-agent/backend/data/*
 !house-agent/backend/data/.gitkeep
 *.local.json
 *.tsbuildinfo
+build/
