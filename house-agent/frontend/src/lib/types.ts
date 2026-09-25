@@ -26,6 +26,7 @@ export interface Criteria {
   include_nearby: boolean;
   condition_rules: string;
   land: LandPrefs | null;
+  sites: string[];
   include_pending: boolean;
   extra_instructions: string;
 }
@@ -129,6 +130,7 @@ export interface RunSummary {
   skipped_regions?: string[];
   errors?: string[];
   usage?: Record<string, number>;
+  sites?: Record<string, { used: number; blocked: number }>;
   active_count?: number;
   imported_from?: string;
   listings_imported?: number;

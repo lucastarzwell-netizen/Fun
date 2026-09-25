@@ -36,7 +36,7 @@ class SearchAgent(Protocol):
         criteria: Criteria,
         region_label: str,
         region_anchor: str,
-        url: str | None,
+        plan: list[tuple[str, str | None]],
         known: list[str],
         excluded: list[str],
         rejected: list[str] | None = None,
@@ -125,12 +125,13 @@ class ClaudeSearchAgent:
     # -- public API --------------------------------------------------------------------
 
     def search_region(
-        self, criteria, region_label, region_anchor, url, known, excluded, rejected=None
+        self, criteria, region_label, region_anchor, plan, known, excluded, rejected=None
     ):
         prompt = prompts.search_prompt(
-            criteria, region_label, region_anchor, url, known, excluded, rejected
+            criteria, region_label, region_anchor, plan, known, excluded, rejected
         )
-        return self._run(prompt, SEARCH_TOOL, SearchResult, fetch_budget=30)
+        # Several sites per county, so allow more page fetches than a single-site search.
+        return self._run(prompt, SEARCH_TOOL, SearchResult, fetch_budget=40)
 
     def check_listings(self, criteria, items):
         prompt = prompts.check_prompt(criteria, items)

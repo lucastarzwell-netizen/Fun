@@ -24,9 +24,11 @@ from ..models import (
 from ..reconcile import RunChanges, apply_check, apply_found, excluded_keys
 from ..schemas import Criteria
 from .claude_agent import AgentError, ClaudeSearchAgent, SearchAgent
-from .sources import redfin_county_url
+from .sources import site_plan
 
 log = logging.getLogger(__name__)
+
+FINISHED = ("succeeded", "partial", "failed", "cancelled")
 
 _running: set[int] = set()
 _running_lock = threading.Lock()
@@ -201,7 +203,18 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         )
     ]
     learned_ids = False
-    for region in criteria.regions:
+    # Which sites blocked each county last time, so they're tried last this time.
+    previous = session.scalar(
+        select(Run)
+        .where(Run.profile_id == profile.id, Run.id != run.id, Run.status.in_(FINISHED))
+        .order_by(Run.id.desc())
+        .limit(1)
+    )
+    history: dict = (previous.summary or {}).get("site_status", {}) if previous else {}
+    run_number = session.query(Run).filter(Run.profile_id == profile.id).count()
+    site_status: dict[str, dict[str, list[str]]] = {}
+    site_tally: dict[str, dict[str, int]] = {}
+    for region_index, region in enumerate(criteria.regions):
         if stop_requested(run.id):
             break
         label = f"{region.name}, {region.state}"
@@ -224,14 +237,23 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
                 )
             )
         ]
-        url = redfin_county_url(region, criteria)
+        last = history.get(label, {})
+        if isinstance(last, list):  # older runs recorded only blocked sites
+            last = {"blocked": last}
+        plan = site_plan(
+            criteria,
+            region,
+            run_number + region_index,
+            used_last_time=set(last.get("used", [])),
+            blocked_last_time=set(last.get("blocked", [])),
+        )
         logline(f"Searching {label}")
         _progress(
             session, run, "search", criteria.regions.index(region), len(criteria.regions), label
         )
         try:
             result = agent.search_region(
-                criteria, label, region.anchor, url, known, excluded_labels, rejected
+                criteria, label, region.anchor, plan, known, excluded_labels, rejected
             )
         except AgentError as e:
             errors.append(f"{label}: {e}")
@@ -241,6 +263,14 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         if region.redfin_county_id is None and result.redfin_county_id:
             region.redfin_county_id = result.redfin_county_id
             learned_ids = True
+        site_status[label] = {
+            "used": sorted(set(result.sites_used)),
+            "blocked": sorted(set(result.sites_blocked)),
+        }
+        for key in set(result.sites_used):
+            site_tally.setdefault(key, {"used": 0, "blocked": 0})["used"] += 1
+        for key in set(result.sites_blocked):
+            site_tally.setdefault(key, {"used": 0, "blocked": 0})["blocked"] += 1
         if not result.region_checked:
             skipped_regions.append(label + (f" ({result.notes})" if result.notes else ""))
         for found in result.listings:
@@ -259,6 +289,8 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         "skipped_regions": skipped_regions,
         "errors": errors,
         "usage": agent.usage.as_dict(),
+        "sites": site_tally,
+        "site_status": site_status,
         "active_count": session.query(Listing)
         .filter(Listing.profile_id == profile.id, Listing.listing_state == ACTIVE)
         .count(),

@@ -20,9 +20,9 @@ class FakeAgent:
         return CheckResult.model_validate({"checks": out})
 
     def search_region(
-        self, criteria, region_label, region_anchor, url, known, excluded, rejected=None
+        self, criteria, region_label, region_anchor, plan, known, excluded, rejected=None
     ):
-        self.search_calls.append((region_label, url, known, excluded, rejected))
+        self.search_calls.append((region_label, plan, known, excluded, rejected))
         result = self.regions.get(region_label, {"listings": [], "region_checked": True})
         if isinstance(result, Exception):
             raise result

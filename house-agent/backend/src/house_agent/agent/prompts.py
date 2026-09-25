@@ -7,6 +7,7 @@ user message.
 from __future__ import annotations
 
 from ..schemas import Criteria, LandPrefs
+from .sources import SITES
 
 SYSTEM = """\
 You are a property-search assistant. You look through real-estate listing sites for one \
@@ -20,7 +21,12 @@ if the page didn't show it. If a page could not be loaded (blocked, rate-limited
 say so in the notes instead of inventing results.
 - Search pages often include "nearby" listings from other areas, and some are mis-geocoded. \
 Check each listing's real city and state before including it.
-- Realtor.com blocks automated access; don't use it.
+- Listing sites (Redfin, Zillow, Realtor.com, Homes.com, LandWatch) sometimes refuse \
+automated access. If a site blocks you (403/429 error, CAPTCHA, "access denied", or a page \
+with no listings where there should be some), don't retry or work around it; move on to the \
+next site in the list and report the blocked site.
+- The same house is often on several sites. Report it once, with whichever listing URL you \
+used.
 - Never contact agents, submit forms, create accounts, or try to get past bot checks or \
 CAPTCHAs.
 - When you are done, call the submit tool once with all results. Don't write a prose \
@@ -103,19 +109,30 @@ def search_prompt(
     c: Criteria,
     region_label: str,
     region_anchor: str,
-    url: str | None,
+    plan: list[tuple[str, str | None]],
     known: list[str],
     excluded: list[str],
     rejected: list[str] | None = None,
 ) -> str:
-    where = (
-        f"Start from this search page: {url}\nCheck that the page title names the right area."
-        if url
-        else f"Find the Redfin search-results page for {region_label} with web_search (its URL "
-        "looks like https://www.redfin.com/county/<ID>/<ST>/<Name>-County), open it with "
-        "web_fetch, and report the county ID. If Redfin isn't reachable, use another listing "
-        "site that allows automated access."
-    )
+    if plan:
+        lines = []
+        for key, url in plan:
+            name = SITES[key].name if key in SITES else key
+            start = f" Start here: {url}" if url else ""
+            lines.append(f"- {key} ({name}).{start}")
+        where = (
+            "Listing sites to use for this county, in this order (the keys go in sites_used / "
+            "sites_blocked):\n" + "\n".join(lines) + "\n"
+            "Begin with the first site. If it blocks you, go to the next. If a starting URL "
+            "doesn't show this county's listings, find the county's results page on that site "
+            "with web_search. Check a second site too when the first shows only a few results, "
+            "since each site misses some listings. web_search results (e.g. "
+            f'"{region_label} land for sale" or "... homes for sale") can also lead you to '
+            "listing pages on any of these sites. If you open Redfin's county results page, "
+            "report its county ID (the number after /county/ in the URL)."
+        )
+    else:
+        where = f"Find current listings in {region_label} with web_search."
     parts = [
         f"Search {region_label} for listings that match the buyer's criteria. "
         f"This area is searched for anchor {region_anchor}.",
@@ -149,6 +166,7 @@ def search_prompt(
 
 
 def check_prompt(c: Criteria, items: list[dict]) -> str:
+    sites = ", ".join(SITES[k].name for k in (c.sites or []) if k in SITES) or "any listing site"
     rows = "\n".join(
         f"- ref {i['ref']}: {i['address']}, {i['city']}, {i['state']} | "
         f"price on file {i['price']} | {i['url'] or 'no URL on file'}"
@@ -160,6 +178,8 @@ def check_prompt(c: Criteria, items: list[dict]) -> str:
         "re-read the description and label its condition. If you label one reject, give a "
         "one-sentence reject_reason addressed to the buyer.\n\n"
         f"{rows}\n\nBuyer's criteria:\n{criteria_block(c)}\n\n"
+        "If a listing's page is blocked or gone, search for the address and check it on "
+        f"another site ({sites}).\n"
         "Report every ref exactly once, using status 'unknown' if you couldn't load it. Then "
         "call submit_check_results."
     )

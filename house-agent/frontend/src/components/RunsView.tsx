@@ -3,8 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { api } from "../lib/api";
 import { cx, dateTime, duration, money } from "../lib/format";
+import { SITES } from "../lib/wizard";
 import type { Run } from "../lib/types";
 import { Badge, type Tone } from "./Badge";
+
+const SITE_NAMES: Record<string, string> = Object.fromEntries(SITES.map((x) => [x.key, x.name]));
 
 const STATUS_TONE: Record<string, Tone> = {
   queued: "gray",
@@ -102,6 +105,20 @@ function RunDetail({ id }: { id: number }) {
       <Section title="Skipped (excluded)" items={s.skipped_excluded} />
       <Section title="Regions not checked" items={s.skipped_regions} tone="amber" />
       <Section title="Errors" items={s.errors} tone="red" />
+      {s.sites && Object.keys(s.sites).length > 0 && (
+        <div>
+          <h4 className="mb-1 font-medium">Listing sites</h4>
+          <ul className="space-y-0.5 text-stone-600 dark:text-stone-400">
+            {Object.entries(s.sites).map(([key, t]) => (
+              <li key={key}>
+                <span className="font-medium text-stone-800 dark:text-stone-200">{SITE_NAMES[key] ?? key}</span>:{" "}
+                used for {t.used} {t.used === 1 ? "county" : "counties"}
+                {t.blocked > 0 && <span className="text-amber-700 dark:text-amber-400"> · blocked in {t.blocked}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {s.usage && (
         <div>
           <h4 className="mb-1 font-medium">Usage</h4>

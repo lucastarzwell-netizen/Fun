@@ -76,8 +76,10 @@ def test_first_run_adds_matches_and_skips_rejects(session):
     assert sorted(run.summary["added"]) == ["1 Farm Rd, Adrian, MI", "5 Tlc Rd, Adrian, MI"]
     assert _listing(session, profile, "5 Tlc Rd").condition == "needs_updating"
     assert _listing(session, profile, "1 Farm Rd").first_seen_run_id == run.id
-    # The first region's URL follows the routine's Redfin pattern.
-    assert agent.search_calls[0][1].startswith("https://www.redfin.com/county/1393/MI/Lenawee")
+    # Every county gets all the house sites; Redfin's URL follows the routine's pattern.
+    plan = dict(agent.search_calls[0][1])
+    assert set(plan) == {"redfin", "zillow", "realtor", "homes"}  # no LandWatch for houses
+    assert plan["redfin"].startswith("https://www.redfin.com/county/1393/MI/Lenawee")
 
 
 def test_recheck_handles_price_cuts_and_removals(session):
@@ -217,7 +219,7 @@ def test_run_saves_discovered_redfin_ids(session):
         }
     )
     _run(session, profile, agent)
-    assert agent.search_calls[0][1] is None  # no ID yet, so no direct URL
+    assert dict(agent.search_calls[0][1])["redfin"] is None  # no ID yet, so no direct URL
     session.expire_all()
     assert session.get(SearchProfile, profile.id).criteria["regions"][0]["redfin_county_id"] == 1377
 
@@ -403,3 +405,40 @@ def test_feedback_and_rejections_reach_the_agent(session):
     ]
     rejected_arg = agent.search_calls[0][4]
     assert rejected_arg == ["3 Mold Rd, Adrian, MI (was $150,000)"]
+
+
+def test_each_run_leads_with_a_site_the_county_did_not_use_last_time(session):
+    profile = _profile(session)
+    lenawee = "Lenawee County, MI"
+    first = FakeAgent(
+        regions={
+            lenawee: {
+                "region_checked": True,
+                "listings": [],
+                "sites_used": ["realtor"],
+                "sites_blocked": ["zillow"],
+            }
+        }
+    )
+    run = _run(session, profile, first)
+    assert [k for k, _ in first.search_calls[0][1]][0] != [k for k, _ in first.search_calls[1][1]][
+        0
+    ]
+    assert run.summary["site_status"][lenawee] == {"used": ["realtor"], "blocked": ["zillow"]}
+    assert run.summary["sites"]["realtor"] == {"used": 1, "blocked": 0}
+    assert run.summary["sites"]["zillow"] == {"used": 0, "blocked": 1}
+
+    # Next run: fresh sites first, last run's site after them, the blocked site last.
+    second = FakeAgent(
+        regions={lenawee: {"region_checked": True, "listings": [], "sites_used": ["redfin"]}}
+    )
+    _run(session, profile, second)
+    order = [k for k, _ in second.search_calls[0][1]]
+    assert order[0] in {"redfin", "homes"}
+    assert order[-2:] == ["realtor", "zillow"]
+
+    # The run after that leads with the one site this county hasn't led with yet.
+    third = FakeAgent()
+    _run(session, profile, third)
+    order = [k for k, _ in third.search_calls[0][1]]
+    assert order[0] != "redfin" and order[-1] == "redfin"

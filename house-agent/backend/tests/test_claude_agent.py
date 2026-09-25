@@ -49,7 +49,9 @@ GOOD = {
 
 
 def _search(agent):
-    return agent.search_region(Criteria(), "Lenawee County, MI", "DTW", "https://x", [], [])
+    return agent.search_region(
+        Criteria(), "Lenawee County, MI", "DTW", [("redfin", "https://x")], [], []
+    )
 
 
 def test_submit_tool_schema_is_self_contained():

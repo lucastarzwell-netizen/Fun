@@ -63,6 +63,10 @@ class Criteria(BaseModel):
     )
     condition_rules: str = DEFAULT_CONDITION_RULES
     land: LandPrefs | None = None
+    sites: list[str] = Field(
+        default=["redfin", "zillow", "realtor", "homes", "landwatch"],
+        description="Listing sites to search, in preference order (LandWatch only for land)",
+    )
     include_pending: bool = Field(
         default=False,
         description="Also list pending / under-contract (contingent) listings",

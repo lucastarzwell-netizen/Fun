@@ -57,6 +57,16 @@ export const LAND_AVOID = [
   "Auctions and tax sales",
 ];
 
+// Listing sites the agent can search (keys match backend agent/sources.py).
+export const SITES = [
+  { key: "redfin", name: "Redfin" },
+  { key: "zillow", name: "Zillow" },
+  { key: "realtor", name: "Realtor.com" },
+  { key: "homes", name: "Homes.com" },
+  { key: "landwatch", name: "LandWatch", landOnly: true },
+] as const;
+export const DEFAULT_SITES = SITES.map((s) => s.key as string);
+
 export const DRIVE_TIMES = [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4];
 
 export const CONDITIONS = {
@@ -215,6 +225,7 @@ export function toProfile(a: WizardAnswers): ProfileIn {
     include_nearby: true,
     condition_rules: CONDITIONS[a.condition].rules,
     land: hasLand(a) ? a.land : null,
+    sites: DEFAULT_SITES,
     include_pending: a.includePending,
     extra_instructions: extra,
   };

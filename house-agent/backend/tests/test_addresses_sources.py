@@ -81,9 +81,44 @@ def test_prompt_includes_feedback_and_previous_rejections():
     from house_agent.agent.prompts import search_prompt
 
     c = Criteria(feedback=['1 A Rd: you rejected it; the buyer included it anyway: "ok"'])
-    text = search_prompt(c, "X County, MI", "DTW", None, [], [], ["2 B Rd, X, MI (was $100,000)"])
+    text = search_prompt(c, "X County, MI", "DTW", [], [], [], ["2 B Rd, X, MI (was $100,000)"])
     assert "The buyer's corrections to your earlier rejections" in text
     assert "skip them unless the price shown now is lower" in text
     assert "reject_reason" in text
     # Feedback is runtime-only; it never gets saved with the profile.
     assert "feedback" not in c.model_dump()
+
+
+def test_site_plan_urls_and_land_only_sites():
+    from house_agent.agent.sources import site_plan
+
+    region = Region(name="St. Clair County", state="MI", anchor="DTW", redfin_county_id=1421)
+    land = Criteria(property_types=["land"], min_acres=1)
+    plan = dict(site_plan(land, region, 0))
+    assert plan["redfin"].startswith("https://www.redfin.com/county/1421/MI/St-Clair-County/")
+    assert plan["zillow"] == "https://www.zillow.com/st-clair-county-mi/"
+    assert plan["realtor"].endswith("/realestateandhomes-search/St-Clair-County_MI")
+    assert plan["landwatch"] == "https://www.landwatch.com/michigan-land-for-sale/st-clair-county"
+    assert "landwatch" not in dict(site_plan(Criteria(), region, 0))  # land only
+    assert [k for k, _ in site_plan(Criteria(sites=["zillow"]), region, 3)] == ["zillow"]
+
+
+def test_search_prompt_lists_sites_in_order():
+    from house_agent.agent.prompts import search_prompt
+
+    plan = [("zillow", "https://z"), ("redfin", None)]
+    text = search_prompt(Criteria(), "X County, MI", "DTW", plan, [], [])
+    assert text.index("- zillow (Zillow). Start here: https://z") < text.index("- redfin (Redfin).")
+
+
+def test_site_plan_prefers_sites_not_used_last_time():
+    from house_agent.agent.sources import site_plan
+
+    region = Region(name="Lenawee County", state="MI", anchor="DTW")
+    order = [
+        k
+        for k, _ in site_plan(
+            Criteria(), region, 0, used_last_time={"redfin"}, blocked_last_time={"zillow"}
+        )
+    ]
+    assert order == ["realtor", "homes", "redfin", "zillow"]

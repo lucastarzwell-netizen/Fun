@@ -39,6 +39,13 @@ class SearchResult(BaseModel):
     listings: list[FoundListing]
     notes: str = Field(default="", description="Problems, e.g. page blocked or rate-limited")
     region_checked: bool = Field(description="False if the region's results could not be loaded")
+    sites_used: list[str] = Field(
+        default=[], description="Keys of the sites whose results you used, e.g. ['zillow']"
+    )
+    sites_blocked: list[str] = Field(
+        default=[],
+        description="Keys of sites that refused access (403/429, CAPTCHA, 'access denied')",
+    )
     redfin_county_id: int | None = Field(
         default=None,
         description="If you used Redfin's results page for this county, the number after "

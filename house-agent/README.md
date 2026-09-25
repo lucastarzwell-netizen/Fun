@@ -150,9 +150,13 @@ against a fake Anthropic client. None of them call the network.
 
 ## Known limits
 
-- **Listing data.** Redfin has no public API, and its terms don't allow scraping. Reading a
-  handful of pages for your own search, as the weekly routine does, is fine for personal
-  use. If other people will use this, switch to a licensed listings API before opening it up.
+- **Listing data.** Searches are spread across Redfin, Zillow, Realtor.com and Homes.com
+  (plus LandWatch for land), configurable in Search settings. Each county leads with a site
+  it didn't use last run, so coverage rotates across sites; sites that block the agent are
+  tried last next time, and the Runs page shows per-site results. The agent never works
+  around a block. None of these sites offer a public API, and their terms don't allow
+  scraping. Light personal use is one thing; if other people will use this, switch to a
+  licensed listings API before opening it up.
 - **Cost.** A full run is roughly 30 region searches plus re-checks of every tracked house,
   so expect several dollars per run on Opus. Lower `HOUSE_AGENT_EFFORT` or use a Sonnet
   model to cut that; the Runs page shows token and fetch counts for each run.

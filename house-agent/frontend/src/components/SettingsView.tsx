@@ -10,6 +10,7 @@ import {
   LAND_NICE_TO_HAVES,
   LAND_USES,
   LAND_ZONING,
+  SITES,
   hasHomes,
   hasLand,
 } from "../lib/wizard";
@@ -112,6 +113,38 @@ export function SettingsView({ profile }: { profile: Profile }) {
               onChange={(e) => setC({ min_baths: numOrNull(e.target.value) })} />
           </Field>
         </div>
+      </Panel>
+
+      <Panel
+        title="Listing sites"
+        hint="The agent spreads each search across these sites. Each county starts on a site it didn't use last time, so over a few searches every county is checked on every site. Sites that block the agent are tried last next time."
+      >
+        <div className="grid gap-2 sm:grid-cols-3">
+          {SITES.map((site) => {
+            const on = (c.sites ?? []).includes(site.key);
+            return (
+              <label key={site.key} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-pine-600"
+                  checked={on}
+                  onChange={() =>
+                    setC({
+                      sites: on
+                        ? c.sites.filter((k) => k !== site.key)
+                        : SITES.map((x) => x.key as string).filter((k) => k === site.key || c.sites.includes(k)),
+                    })
+                  }
+                />
+                {site.name}
+                {"landOnly" in site && <span className="text-xs text-stone-500">(land searches)</span>}
+              </label>
+            );
+          })}
+        </div>
+        {(c.sites ?? []).length === 0 && (
+          <p className="text-sm text-rose-600">Pick at least one site, or the agent will only use web search.</p>
+        )}
       </Panel>
 
       <Panel title="Pending and under-contract listings">
