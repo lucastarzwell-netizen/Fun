@@ -37,6 +37,16 @@ class Region(BaseModel):
     redfin_county_id: int | None = None
 
 
+class LandPrefs(BaseModel):
+    """What the buyer wants from vacant land. Values are plain-language labels."""
+
+    uses: list[str] = Field(default=[], description="Intended use, e.g. 'Build a home'")
+    must_have: list[str] = Field(default=[], description="Reject land without these")
+    nice_to_have: list[str] = []
+    zoning: list[str] = Field(default=[], description="Acceptable zoning; empty = any")
+    avoid: list[str] = []
+
+
 class Criteria(BaseModel):
     property_types: list[str] = ["house"]
     min_price: int | None = None
@@ -52,6 +62,7 @@ class Criteria(BaseModel):
         description="Keep 'nearby' results from other areas if within an anchor's drive limit",
     )
     condition_rules: str = DEFAULT_CONDITION_RULES
+    land: LandPrefs | None = None
     extra_instructions: str = ""
 
 

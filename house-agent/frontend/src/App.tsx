@@ -73,6 +73,9 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
 
   const lastRun = stats.data?.last_run;
 
+  // Wait for the first load so a new account goes straight to setup without a flash.
+  if (profiles.isLoading) return null;
+
   // First visit (no searches yet) or "New search": the guided setup.
   if (wizardOpen || (profiles.isSuccess && profiles.data.length === 0)) {
     return (

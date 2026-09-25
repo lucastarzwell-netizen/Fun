@@ -6,7 +6,7 @@ user message.
 
 from __future__ import annotations
 
-from ..schemas import Criteria
+from ..schemas import Criteria, LandPrefs
 
 SYSTEM = """\
 You are a property-search assistant. You look through real-estate listing sites for one \
@@ -26,13 +26,18 @@ CAPTCHAs.
 - When you are done, call the submit tool once with all results. Don't write a prose \
 summary instead of calling it.
 
-Condition labels:
+Condition labels for homes:
 - good: livable with no repair language.
 - needs_updating: livable, but only needs cosmetic updating or "some TLC".
 - reject: needs major repairs to be habitable (see the buyer's rules).
 - unverified: you couldn't read the description.
-Condition notes: a short, factual line, e.g. "1940 farmhouse; new roof 2023; pole barn" or \
-"listing says needs some TLC". Mention price cuts you notice ("cut from $169,900 on 9/21").
+Condition labels for vacant land (never use needs_updating for land):
+- good: meets every must-have in the buyer's land preferences.
+- unverified: the listing doesn't say whether a must-have is met (e.g. utilities not mentioned).
+- reject: fails a must-have, or has something the buyer wants to avoid.
+Condition notes: a short, factual line, e.g. "1940 farmhouse; new roof 2023; pole barn", \
+"listing says needs some TLC", or for land "wooded, creek, power at road, perc test done, \
+zoned AG". Mention price cuts you notice ("cut from $169,900 on 9/21").
 """
 
 
@@ -64,10 +69,26 @@ def criteria_block(c: Criteria) -> str:
         if c.include_nearby
         else "Only report listings located inside the area being searched."
     )
-    lines.append("Condition rules:\n" + c.condition_rules.strip())
+    homes = [t for t in c.property_types if t != "land"]
+    if homes or not c.property_types:
+        lines.append("Condition rules for homes:\n" + c.condition_rules.strip())
+    if c.land is not None and ("land" in c.property_types or not c.property_types):
+        lines.append(land_block(c.land))
     if c.extra_instructions.strip():
         lines.append("Other instructions:\n" + c.extra_instructions.strip())
     return "\n".join(lines)
+
+
+def land_block(land: LandPrefs) -> str:
+    rows = [
+        ("Intended use", land.uses),
+        ("Must have (reject land without these)", land.must_have),
+        ("Nice to have (mention in notes when present)", land.nice_to_have),
+        ("Acceptable zoning", land.zoning or ["any"]),
+        ("Avoid (reject)", land.avoid),
+    ]
+    body = "\n".join(f"  - {label}: {', '.join(vals)}" for label, vals in rows if vals)
+    return "Vacant land preferences:\n" + body
 
 
 def search_prompt(

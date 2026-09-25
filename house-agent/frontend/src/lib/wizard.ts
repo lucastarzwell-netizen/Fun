@@ -1,6 +1,6 @@
 // Turns the setup wizard's answers into a search profile.
 
-import type { Anchor, Criteria, ProfileIn, Region } from "./types";
+import type { Anchor, Criteria, LandPrefs, ProfileIn, Region } from "./types";
 
 export const PROPERTY_TYPES = [
   { key: "house", label: "House", hint: "Single-family home" },
@@ -10,6 +10,52 @@ export const PROPERTY_TYPES = [
   { key: "manufactured", label: "Manufactured", hint: "Manufactured or mobile home" },
   { key: "land", label: "Land", hint: "Lots and acreage" },
 ] as const;
+
+/** Property types that are buildings (everything except vacant land). */
+export const HOME_TYPES = ["house", "townhouse", "condo", "multifamily", "manufactured"];
+
+export const hasHomes = (a: Pick<WizardAnswers, "propertyTypes">) =>
+  a.propertyTypes.some((t) => HOME_TYPES.includes(t));
+export const hasLand = (a: Pick<WizardAnswers, "propertyTypes">) => a.propertyTypes.includes("land");
+
+// Land questions. Stored as these labels; the agent reads them as written.
+export const LAND_USES = [
+  "Build a home",
+  "Cabin or weekend getaway",
+  "Hunting",
+  "Farming or livestock",
+  "Homestead",
+  "Camping or RV",
+  "Investment / hold",
+];
+
+export const LAND_MUST_HAVES = [
+  "Year-round road access",
+  "Power at or near the road",
+  "Buildable (level, perc test passed or septic approved)",
+  "Well or public water available",
+  "Allows mobile or manufactured homes",
+];
+
+export const LAND_NICE_TO_HAVES = [
+  "Wooded",
+  "Open or tillable fields",
+  "Pond, creek, or river frontage",
+  "Good hunting (wildlife, cover)",
+  "Views",
+  "Existing barn, shed, or driveway",
+  "Privacy / no close neighbors",
+];
+
+export const LAND_ZONING = ["Residential", "Agricultural", "Recreational", "Unrestricted / no zoning"];
+
+export const LAND_AVOID = [
+  "Landlocked (no legal access)",
+  "Mostly wetlands or flood zone",
+  "HOA or deed restrictions that limit building",
+  "Next to highways, industry, or landfills",
+  "Auctions and tax sales",
+];
 
 export const DRIVE_TIMES = [0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4];
 
@@ -79,6 +125,7 @@ export interface WizardAnswers {
   minAcres: number | null;
   condition: ConditionKey;
   dealBreakers: DealBreaker[];
+  land: LandPrefs;
   notes: string;
   frequency: Frequency;
   day: number;
@@ -100,6 +147,13 @@ export function initialAnswers(): WizardAnswers {
     minAcres: null,
     condition: "cosmetic",
     dealBreakers: ["auctions"],
+    land: {
+      uses: [],
+      must_have: ["Year-round road access"],
+      nice_to_have: [],
+      zoning: [],
+      avoid: ["Landlocked (no legal access)", "Auctions and tax sales"],
+    },
     notes: "",
     frequency: "weekly",
     day: 5,
@@ -123,17 +177,22 @@ export function cronFor(a: WizardAnswers) {
 }
 
 export function defaultName(a: WizardAnswers) {
-  const type = a.propertyTypes.length === 1
-    ? (PROPERTY_TYPES.find((p) => p.key === a.propertyTypes[0])?.label ?? "Home") + "s"
-    : "Homes";
+  const only = a.propertyTypes.length === 1 ? a.propertyTypes[0] : null;
+  const type =
+    only === "land"
+      ? "Land"
+      : only
+        ? (PROPERTY_TYPES.find((p) => p.key === only)?.label ?? "Home") + "s"
+        : "Properties";
   const near = a.anchors.map((x) => x.code).join(", ");
   return near ? `${type} near ${near}` : `${type} search`;
 }
 
 export function toProfile(a: WizardAnswers): ProfileIn {
+  const homes = hasHomes(a);
   const extra = [
     "US only.",
-    ...DEAL_BREAKERS.filter((d) => a.dealBreakers.includes(d.key)).map((d) => d.text),
+    ...(homes ? DEAL_BREAKERS.filter((d) => a.dealBreakers.includes(d.key)).map((d) => d.text) : []),
     a.notes.trim(),
   ]
     .filter(Boolean)
@@ -144,14 +203,16 @@ export function toProfile(a: WizardAnswers): ProfileIn {
     max_price: a.maxPrice,
     min_acres: a.minAcres,
     max_acres: null,
-    min_beds: a.minBeds,
-    min_baths: a.minBaths,
+    // Bedrooms and bathrooms mean nothing for land-only searches.
+    min_beds: homes ? a.minBeds : null,
+    min_baths: homes ? a.minBaths : null,
     anchors: a.anchors,
     regions: a.regions
       .filter((r) => r.selected)
       .map(({ name, state, anchor, redfin_county_id }) => ({ name, state, anchor, redfin_county_id })),
     include_nearby: true,
     condition_rules: CONDITIONS[a.condition].rules,
+    land: hasLand(a) ? a.land : null,
     extra_instructions: extra,
   };
   return {

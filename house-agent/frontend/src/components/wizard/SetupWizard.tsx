@@ -8,21 +8,51 @@ import {
   CONDITIONS,
   DEAL_BREAKERS,
   DRIVE_TIMES,
+  LAND_AVOID,
+  LAND_MUST_HAVES,
+  LAND_NICE_TO_HAVES,
+  LAND_USES,
+  LAND_ZONING,
   PROPERTY_TYPES,
   type ConditionKey,
   type Frequency,
   type WizardAnswers,
   defaultName,
+  hasHomes,
+  hasLand,
   initialAnswers,
   placeCode,
   toProfile,
 } from "../../lib/wizard";
-import { ChipGroup, OptionCard, Question, hoursLabel } from "./ui";
+import { CheckList, ChipGroup, MultiChips, OptionCard, Question, hoursLabel } from "./ui";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-const STEPS = ["type", "budget", "size", "location", "areas", "condition", "schedule", "review"] as const;
-type Step = (typeof STEPS)[number];
+type Step =
+  | "type"
+  | "budget"
+  | "size"
+  | "location"
+  | "areas"
+  | "condition"
+  | "land"
+  | "schedule"
+  | "review";
+
+/** The questions depend on the property types: homes get "condition", land gets "land". */
+function stepsFor(a: WizardAnswers): Step[] {
+  return [
+    "type",
+    "budget",
+    "size",
+    "location",
+    "areas",
+    ...(hasHomes(a) ? (["condition"] as Step[]) : []),
+    ...(hasLand(a) ? (["land"] as Step[]) : []),
+    "schedule",
+    "review",
+  ];
+}
 
 export function SetupWizard({
   onDone,
@@ -36,7 +66,11 @@ export function SetupWizard({
   const [step, setStep] = useState<Step>("type");
   const [runNow, setRunNow] = useState(true);
   const set = (patch: Partial<WizardAnswers>) => setA((cur) => ({ ...cur, ...patch }));
+  const setLand = (patch: Partial<WizardAnswers["land"]>) => set({ land: { ...a.land, ...patch } });
+  const STEPS = stepsFor(a);
   const i = STEPS.indexOf(step);
+  const homes = hasHomes(a);
+  const land = hasLand(a);
 
   // --- county suggestions -------------------------------------------------------------
   const placesKey = JSON.stringify(a.places);
@@ -101,6 +135,7 @@ export function SetupWizard({
     areas: !suggest.isPending && a.regions.some((r) => r.selected),
     size: true,
     condition: true,
+    land: true,
     schedule: true,
     review: !create.isPending,
   };
@@ -116,7 +151,7 @@ export function SetupWizard({
             <Home size={18} />
           </div>
           <div className="flex-1">
-            <div className="font-display text-lg font-semibold">Set up your house search</div>
+            <div className="font-display text-lg font-semibold">Set up your property search</div>
             <div className="text-xs text-stone-500">
               Step {i + 1} of {STEPS.length}
             </div>
@@ -242,8 +277,13 @@ export function SetupWizard({
           )}
 
           {step === "size" && (
-            <Question title="How much space do you need?" hint="Minimums. Choose Any to skip one.">
+            <Question
+              title={homes ? "How much space do you need?" : "How much land do you need?"}
+              hint="Minimums. Choose Any to skip one."
+            >
               <div className="space-y-6">
+                {homes && (
+                <>
                 <ChipGroup
                   label="Bedrooms"
                   value={a.minBeds}
@@ -256,11 +296,13 @@ export function SetupWizard({
                   onChange={(v) => set({ minBaths: v })}
                   options={[null, 1, 1.5, 2, 3].map((n) => ({ value: n, label: n == null ? "Any" : `${n}+` }))}
                 />
+                </>
+                )}
                 <ChipGroup
-                  label="Lot size"
+                  label={homes ? "Lot size" : "Acreage"}
                   value={a.minAcres}
                   onChange={(v) => set({ minAcres: v })}
-                  options={[null, 0.25, 0.5, 1, 2, 5, 10].map((n) => ({
+                  options={(homes ? [null, 0.25, 0.5, 1, 2, 5, 10] : [null, 1, 5, 10, 20, 40, 80]).map((n) => ({
                     value: n,
                     label: n == null ? "Any" : `${n}+ acre${n > 1 ? "s" : ""}`,
                   }))}
@@ -270,7 +312,14 @@ export function SetupWizard({
           )}
 
           {step === "condition" && (
-            <Question title="How much work are you willing to take on?" hint="The agent reads each listing's description and sorts homes by condition.">
+            <Question
+              title="How much work are you willing to take on?"
+              hint={
+                land
+                  ? "For the homes in your search. Land questions come next."
+                  : "The agent reads each listing's description and sorts homes by condition."
+              }
+            >
               <div className="space-y-3">
                 {(Object.keys(CONDITIONS) as ConditionKey[]).map((k) => (
                   <OptionCard
@@ -307,18 +356,60 @@ export function SetupWizard({
                   })}
                 </div>
               </div>
-              <label className="block space-y-1">
-                <span className="text-sm font-medium text-stone-700 dark:text-stone-300">
-                  Anything else the agent should know? <span className="font-normal text-stone-500">(optional)</span>
-                </span>
-                <textarea
-                  rows={3}
-                  className="input"
-                  placeholder="e.g. Must have a garage or pole barn. No homes right on a highway."
+              {!land && (
+                <Notes
                   value={a.notes}
-                  onChange={(e) => set({ notes: e.target.value })}
+                  onChange={(notes) => set({ notes })}
+                  placeholder="e.g. Must have a garage or pole barn. No homes right on a highway."
                 />
-              </label>
+              )}
+            </Question>
+          )}
+
+          {step === "land" && (
+            <Question
+              title="What are you looking for in the land?"
+              hint="The agent checks each listing against these. Must-haves decide what gets through."
+            >
+              <div className="space-y-7">
+                <MultiChips
+                  label="What will you use it for?"
+                  options={LAND_USES}
+                  value={a.land.uses}
+                  onChange={(uses) => setLand({ uses })}
+                />
+                <CheckList
+                  label="Must have"
+                  hint="Listings without these are skipped. If a listing doesn't say, it's marked Unverified."
+                  options={LAND_MUST_HAVES}
+                  value={a.land.must_have}
+                  onChange={(must_have) => setLand({ must_have })}
+                />
+                <MultiChips
+                  label="Nice to have"
+                  options={LAND_NICE_TO_HAVES}
+                  value={a.land.nice_to_have}
+                  onChange={(nice_to_have) => setLand({ nice_to_have })}
+                />
+                <MultiChips
+                  label="Preferred zoning"
+                  hint="Leave all unselected if any zoning is fine."
+                  options={LAND_ZONING}
+                  value={a.land.zoning}
+                  onChange={(zoning) => setLand({ zoning })}
+                />
+                <CheckList
+                  label="Skip these"
+                  options={LAND_AVOID}
+                  value={a.land.avoid}
+                  onChange={(avoid) => setLand({ avoid })}
+                />
+                <Notes
+                  value={a.notes}
+                  onChange={(notes) => set({ notes })}
+                  placeholder="e.g. At least half wooded. South-facing building site. No shared driveways."
+                />
+              </div>
             </Question>
           )}
 
@@ -388,16 +479,29 @@ export function SetupWizard({
                 </Row>
                 <Row label="Size" onEdit={() => setStep("size")}>
                   {[
-                    a.minBeds && `${a.minBeds}+ beds`,
-                    a.minBaths && `${a.minBaths}+ baths`,
+                    homes && a.minBeds && `${a.minBeds}+ beds`,
+                    homes && a.minBaths && `${a.minBaths}+ baths`,
                     a.minAcres && `${a.minAcres}+ acres`,
                   ]
                     .filter(Boolean)
                     .join(", ") || "Any"}
                 </Row>
-                <Row label="Condition" onEdit={() => setStep("condition")}>
-                  {CONDITIONS[a.condition].label}
-                </Row>
+                {homes && (
+                  <Row label="Condition" onEdit={() => setStep("condition")}>
+                    {CONDITIONS[a.condition].label}
+                  </Row>
+                )}
+                {land && (
+                  <Row label="Land" onEdit={() => setStep("land")}>
+                    {[
+                      a.land.uses.length ? `For ${a.land.uses.join(", ").toLowerCase()}` : "",
+                      a.land.must_have.length ? `Must have: ${a.land.must_have.join(", ").toLowerCase()}` : "",
+                      a.land.zoning.length ? `Zoning: ${a.land.zoning.join(", ").toLowerCase()}` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(". ") || "No land preferences"}
+                  </Row>
+                )}
                 <Row label="Schedule" onEdit={() => setStep("schedule")}>
                   {a.frequency === "manual"
                     ? "Only when you run it"
@@ -548,6 +652,31 @@ function AreasStep({
         )}
       </div>
     </Question>
+  );
+}
+
+function Notes({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block space-y-1">
+      <span className="text-sm font-medium text-stone-700 dark:text-stone-300">
+        Anything else the agent should know? <span className="font-normal text-stone-500">(optional)</span>
+      </span>
+      <textarea
+        rows={3}
+        className="input"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
   );
 }
 

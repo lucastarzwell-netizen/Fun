@@ -25,7 +25,16 @@ export interface Criteria {
   regions: Region[];
   include_nearby: boolean;
   condition_rules: string;
+  land: LandPrefs | null;
   extra_instructions: string;
+}
+
+export interface LandPrefs {
+  uses: string[];
+  must_have: string[];
+  nice_to_have: string[];
+  zoning: string[];
+  avoid: string[];
 }
 
 export interface ProfileIn {

@@ -36,3 +36,25 @@ def test_redfin_filter_rounds_lot_down_and_handles_odd_prices():
 def test_region_without_id_has_no_url():
     region = Region(name="St. Clair County", state="MI", anchor="DTW")
     assert redfin_county_url(region, Criteria()) is None
+
+
+def test_criteria_block_switches_between_home_and_land_rules():
+    from house_agent.agent.prompts import criteria_block
+
+    land = {
+        "uses": ["Build a home", "Hunting"],
+        "must_have": ["Year-round road access"],
+        "nice_to_have": ["Pond or creek"],
+        "zoning": [],
+        "avoid": ["Mostly wetlands"],
+    }
+    land_only = criteria_block(Criteria(property_types=["land"], land=land))
+    assert "Condition rules for homes" not in land_only
+    assert "Must have (reject land without these): Year-round road access" in land_only
+    assert "Acceptable zoning: any" in land_only
+
+    both = criteria_block(Criteria(property_types=["house", "land"], land=land))
+    assert "Condition rules for homes" in both and "Vacant land preferences" in both
+
+    homes = criteria_block(Criteria(property_types=["house"], land=land))
+    assert "Vacant land preferences" not in homes

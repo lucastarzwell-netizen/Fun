@@ -3,7 +3,19 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { dateTime } from "../lib/format";
-import type { Criteria, Profile, ProfileIn, Region } from "../lib/types";
+import type { Criteria, LandPrefs, Profile, ProfileIn, Region } from "../lib/types";
+import {
+  LAND_AVOID,
+  LAND_MUST_HAVES,
+  LAND_NICE_TO_HAVES,
+  LAND_USES,
+  LAND_ZONING,
+  hasHomes,
+  hasLand,
+} from "../lib/wizard";
+import { CheckList, MultiChips } from "./wizard/ui";
+
+const EMPTY_LAND: LandPrefs = { uses: [], must_have: [], nice_to_have: [], zoning: [], avoid: [] };
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -37,6 +49,8 @@ export function SettingsView({ profile }: { profile: Profile }) {
 
   const c = draft.criteria;
   const setC = (patch: Partial<Criteria>) => setDraft({ ...draft, criteria: { ...c, ...patch } });
+  const land = c.land ?? EMPTY_LAND;
+  const setLand = (patch: Partial<LandPrefs>) => setC({ land: { ...land, ...patch } });
   const setRegion = (i: number, patch: Partial<Region>) =>
     setC({ regions: c.regions.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const simple = parseCron(draft.schedule_cron);
@@ -208,9 +222,24 @@ export function SettingsView({ profile }: { profile: Profile }) {
         </label>
       </Panel>
 
-      <Panel title="Condition rules" hint="How the agent decides between good, needs updating, and reject.">
-        <textarea rows={6} className="input font-mono text-xs leading-relaxed" value={c.condition_rules}
-          onChange={(e) => setC({ condition_rules: e.target.value })} />
+      {hasLand({ propertyTypes: c.property_types }) && (
+        <Panel title="Land preferences" hint="How the agent judges vacant land listings.">
+          <MultiChips label="Intended use" options={LAND_USES} value={land.uses} onChange={(uses) => setLand({ uses })} />
+          <CheckList label="Must have" options={LAND_MUST_HAVES} value={land.must_have} onChange={(must_have) => setLand({ must_have })} />
+          <MultiChips label="Nice to have" options={LAND_NICE_TO_HAVES} value={land.nice_to_have} onChange={(nice_to_have) => setLand({ nice_to_have })} />
+          <MultiChips label="Preferred zoning" hint="None selected means any zoning." options={LAND_ZONING} value={land.zoning} onChange={(zoning) => setLand({ zoning })} />
+          <CheckList label="Skip these" options={LAND_AVOID} value={land.avoid} onChange={(avoid) => setLand({ avoid })} />
+        </Panel>
+      )}
+
+      <Panel
+        title={hasHomes({ propertyTypes: c.property_types }) ? "Condition rules" : "Agent instructions"}
+        hint={hasHomes({ propertyTypes: c.property_types }) ? "How the agent decides between good, needs updating, and reject for homes." : undefined}
+      >
+        {hasHomes({ propertyTypes: c.property_types }) && (
+          <textarea rows={6} className="input font-mono text-xs leading-relaxed" value={c.condition_rules}
+            onChange={(e) => setC({ condition_rules: e.target.value })} />
+        )}
         <Field label="Other instructions">
           <textarea rows={3} className="input text-sm" value={c.extra_instructions}
             onChange={(e) => setC({ extra_instructions: e.target.value })} />
