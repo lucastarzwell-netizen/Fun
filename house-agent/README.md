@@ -91,8 +91,11 @@ house-agent run 1
 
 ## Deploy (Render)
 
-`render.yaml` at the repo root is a Render Blueprint. It builds `house-agent/Dockerfile`
-(the dashboard plus the API in one container) and attaches a 1 GB disk for the database.
+`render.yaml` at the repo root is a Render Blueprint. It uses Render's native Python runtime:
+`house-agent/render-build.sh` builds the dashboard and installs the API, and
+`house-agent/render-start.sh` starts one server process with the database on a 1 GB disk at
+`/data`. (`house-agent/Dockerfile` builds the same app as a container for other hosts; an
+existing Render service can't be switched between Docker and a native runtime.)
 
 1. Open https://render.com/deploy?repo=https://github.com/lucastarzwell-netizen/Fun, or in
    the Render dashboard choose **New → Blueprint** and pick this repo. Render reads

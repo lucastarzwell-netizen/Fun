@@ -3,9 +3,10 @@
 services:
   - type: web
     name: house-agent
-    runtime: docker
-    dockerfilePath: ./house-agent/Dockerfile
-    dockerContext: ./house-agent
+    # Native Python runtime. (house-agent/Dockerfile builds the same app for other hosts.)
+    runtime: python
+    buildCommand: bash house-agent/render-build.sh
+    startCommand: bash house-agent/render-start.sh
     # Paid instance: the free tier sleeps (so scheduled searches wouldn't fire) and has no disk.
     plan: starter
     healthCheckPath: /api/health
@@ -14,6 +15,8 @@ services:
       mountPath: /data
       sizeGB: 1
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
       - key: ANTHROPIC_API_KEY
         sync: false # entered in the Render dashboard at deploy time
       - key: HOUSE_AGENT_PASSWORD
