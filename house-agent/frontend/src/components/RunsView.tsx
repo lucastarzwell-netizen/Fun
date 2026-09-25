@@ -57,7 +57,13 @@ export function RunsView({ profileId }: { profileId: number }) {
 function headline(run: Run) {
   const s = run.summary;
   if (run.trigger === "import") return `Imported ${s.listings_imported ?? 0} listings`;
-  if (run.status === "running" || run.status === "queued") return "In progress…";
+  if (run.status === "running" || run.status === "queued") {
+    const p = s.progress;
+    if (!p) return "Starting…";
+    return p.phase === "recheck"
+      ? `Re-checking listings ${p.done}/${p.total}`
+      : `Searching ${p.current} (${p.done + 1}/${p.total})`;
+  }
   const parts = [
     `${s.added?.length ?? 0} added`,
     `${s.removed?.length ?? 0} removed`,

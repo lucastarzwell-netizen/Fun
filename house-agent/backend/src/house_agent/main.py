@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
+from .agent.runner import mark_interrupted_runs
 from .api import listings, profiles, wizard
 from .auth import ensure_default_user
 from .auth import router as auth_router
@@ -34,6 +35,8 @@ async def lifespan(app: FastAPI):
     init_db()
     with SessionLocal() as session:
         ensure_default_user(session)
+        if n := mark_interrupted_runs(session):
+            logging.getLogger(__name__).warning("Closed %d run(s) interrupted by a restart", n)
     if settings.scheduler_enabled:
         scheduler.start()
     yield

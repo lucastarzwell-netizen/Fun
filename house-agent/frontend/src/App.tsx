@@ -4,6 +4,7 @@ import { Ban, History, Home, Loader2, LogOut, Monitor, Moon, Play, Plus, Setting
 import { api } from "./lib/api";
 import { cx, dateTime } from "./lib/format";
 import { useTheme } from "./lib/theme";
+import type { RunProgress } from "./lib/types";
 import { useLocal } from "./lib/useLocal";
 import { ListingsView } from "./components/ListingsView";
 import { ExcludedView } from "./components/ExcludedView";
@@ -55,6 +56,14 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
     queryFn: () => api.stats(profile!.id),
     enabled: !!profile,
   });
+
+  // Listings land county by county, so refresh them while a run is going.
+  const progressKey = JSON.stringify(activeRun?.summary.progress ?? null);
+  useEffect(() => {
+    if (!activeRun || !profile) return;
+    qc.invalidateQueries({ queryKey: ["listings", profile.id] });
+    qc.invalidateQueries({ queryKey: ["stats", profile.id] });
+  }, [progressKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When a run finishes, refresh everything it may have changed.
   const [wasRunning, setWasRunning] = useState(false);
@@ -182,13 +191,7 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
             Couldn't start the search: {(start.error as Error).message}
           </div>
         )}
-        {activeRun && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
-            <Loader2 size={16} className="animate-spin" />
-            The agent is checking listings and searching your regions. This can take a while; results
-            appear when it's done.
-          </div>
-        )}
+        {activeRun && <RunBanner progress={activeRun.summary.progress} />}
 
         {profiles.isLoading ? (
           <p className="text-stone-500">Loading…</p>
@@ -207,6 +210,29 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
           <SettingsView profile={profile} />
         )}
       </main>
+    </div>
+  );
+}
+
+function RunBanner({ progress }: { progress?: RunProgress }) {
+  const pct = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const label = !progress
+    ? "Starting the search…"
+    : progress.phase === "recheck"
+      ? `Re-checking your tracked listings (${progress.done} of ${progress.total})`
+      : `Searching ${progress.current} (${progress.done + 1} of ${progress.total} counties)`;
+  return (
+    <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+      <div className="flex items-center gap-2">
+        <Loader2 size={16} className="shrink-0 animate-spin" />
+        <span className="font-medium">{label}</span>
+        <span className="ml-auto hidden text-xs opacity-80 sm:inline">
+          New listings show up as each county finishes.
+        </span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sky-200/70 dark:bg-sky-900">
+        <div className="h-full rounded-full bg-sky-600 transition-all duration-500" style={{ width: `${pct}%` }} />
+      </div>
     </div>
   );
 }

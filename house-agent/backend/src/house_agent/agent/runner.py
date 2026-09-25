@@ -47,6 +47,29 @@ class _Log:
         self.session.commit()
 
 
+def _progress(session: Session, run: Run, phase: str, done: int, total: int, current: str) -> None:
+    """Live progress for the dashboard; replaced by the final summary when the run ends."""
+    run.summary = {"progress": {"phase": phase, "done": done, "total": total, "current": current}}
+    session.commit()
+
+
+def mark_interrupted_runs(session: Session) -> int:
+    """Runs execute in-process, so a restart (e.g. a deploy) kills any run in flight.
+    Called at startup to close those out instead of leaving them 'running' forever."""
+    stale = list(session.scalars(select(Run).where(Run.status.in_(["queued", "running"]))))
+    for run in stale:
+        run.status = "failed"
+        run.finished_at = _now()
+        run.summary = {
+            "errors": [
+                "Interrupted because the server restarted (for example, a new deploy). "
+                "Listings found before the restart were kept; run the search again to finish."
+            ]
+        }
+    session.commit()
+    return len(stale)
+
+
 def create_run(session: Session, profile: SearchProfile, trigger: str) -> Run:
     run = Run(profile_id=profile.id, trigger=trigger, status="queued")
     session.add(run)
@@ -93,6 +116,8 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         )
     )
     logline(f"Re-checking {len(active)} tracked listings")
+    if active:
+        _progress(session, run, "recheck", 0, len(active), "Re-checking tracked listings")
     batch = max(1, settings.check_batch_size)
     for start in range(0, len(active), batch):
         chunk = active[start : start + batch]
@@ -121,6 +146,14 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             apply_check(session, listing, check, run.id, today, changes)
         session.commit()
         logline(f"Re-checked {min(start + batch, len(active))}/{len(active)}")
+        _progress(
+            session,
+            run,
+            "recheck",
+            min(start + batch, len(active)),
+            len(active),
+            "Re-checking tracked listings",
+        )
 
     # 2. Search each region for new listings.
     excluded = excluded_keys(session, profile.id)
@@ -144,6 +177,9 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         ]
         url = redfin_county_url(region, criteria)
         logline(f"Searching {label}")
+        _progress(
+            session, run, "search", criteria.regions.index(region), len(criteria.regions), label
+        )
         try:
             result = agent.search_region(
                 criteria, label, region.anchor, url, known, excluded_labels

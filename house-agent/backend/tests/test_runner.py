@@ -214,3 +214,25 @@ def test_run_saves_discovered_redfin_ids(session):
     assert agent.search_calls[0][1] is None  # no ID yet, so no direct URL
     session.expire_all()
     assert session.get(SearchProfile, profile.id).criteria["regions"][0]["redfin_county_id"] == 1377
+
+
+def test_restart_closes_interrupted_runs(session):
+    from house_agent.agent.runner import mark_interrupted_runs
+    from house_agent.models import Run
+
+    profile = _profile(session)
+    stuck = create_run(session, profile, "schedule")
+    stuck.status = "running"
+    stuck.summary = {"progress": {"phase": "search", "done": 3, "total": 10, "current": "X"}}
+    session.commit()
+    assert mark_interrupted_runs(session) == 1
+    session.expire_all()
+    run = session.get(Run, stuck.id)
+    assert run.status == "failed" and "restarted" in run.summary["errors"][0]
+    assert run.finished_at is not None
+
+
+def test_progress_is_replaced_by_summary(session):
+    profile = _profile(session)
+    run = _run(session, profile, FakeAgent())
+    assert "progress" not in run.summary and "added" in run.summary

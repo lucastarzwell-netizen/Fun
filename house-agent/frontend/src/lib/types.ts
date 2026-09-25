@@ -105,7 +105,15 @@ export interface Excluded {
   excluded_on: string;
 }
 
+export interface RunProgress {
+  phase: "recheck" | "search";
+  done: number;
+  total: number;
+  current: string;
+}
+
 export interface RunSummary {
+  progress?: RunProgress;
   added?: string[];
   removed?: { listing: string; reason: string }[];
   price_changes?: { listing: string; old: number; new: number }[];
