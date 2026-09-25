@@ -15,6 +15,7 @@ import {
   hasLand,
 } from "../lib/wizard";
 import { CheckList, MultiChips } from "./wizard/ui";
+import { LocationsPanel } from "./LocationsPanel";
 
 const EMPTY_LAND: LandPrefs = { uses: [], must_have: [], nice_to_have: [], zoning: [], avoid: [] };
 
@@ -203,34 +204,9 @@ export function SettingsView({ profile }: { profile: Profile }) {
         </p>
       </Panel>
 
-      <Panel title="Anchors" hint="Places the search is centered on. Each listing gets a drive-time estimate to the nearest one.">
-        {c.anchors.map((a, i) => (
-          <div key={i} className="grid grid-cols-[5rem_1fr_7rem_auto] items-end gap-2">
-            <Field label={i === 0 ? "Code" : undefined}>
-              <input className="input uppercase" value={a.code}
-                onChange={(e) => setC({ anchors: c.anchors.map((x, j) => (j === i ? { ...x, code: e.target.value.toUpperCase() } : x)) })} />
-            </Field>
-            <Field label={i === 0 ? "Name" : undefined}>
-              <input className="input" value={a.name}
-                onChange={(e) => setC({ anchors: c.anchors.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-            </Field>
-            <Field label={i === 0 ? "Max drive (hr)" : undefined}>
-              <input type="number" step={0.1} className="input" value={a.max_drive_hours}
-                onChange={(e) => setC({ anchors: c.anchors.map((x, j) => (j === i ? { ...x, max_drive_hours: Number(e.target.value) } : x)) })} />
-            </Field>
-            <button type="button" className="btn-ghost p-2" title="Remove"
-              onClick={() => setC({ anchors: c.anchors.filter((_, j) => j !== i) })}>
-              <Trash2 size={16} />
-            </button>
-          </div>
-        ))}
-        <button type="button" className="btn-outline"
-          onClick={() => setC({ anchors: [...c.anchors, { code: "", name: "", max_drive_hours: 2 }] })}>
-          <Plus size={16} /> Add anchor
-        </button>
-      </Panel>
+      <LocationsPanel criteria={c} savedAnchors={profile.criteria.anchors} setC={setC} />
 
-      <Panel title={`Regions (${c.regions.length})`} hint="Counties to search. With a Redfin county ID the agent opens that county's filtered results page directly; without one it searches the web.">
+      <Panel title={`Counties (${c.regions.length})`} hint="The counties the agent searches. Use Update counties above after changing a drive time, or edit this list directly.">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-stone-500">
