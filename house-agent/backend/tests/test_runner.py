@@ -236,3 +236,24 @@ def test_progress_is_replaced_by_summary(session):
     profile = _profile(session)
     run = _run(session, profile, FakeAgent())
     assert "progress" not in run.summary and "added" in run.summary
+
+
+def test_stop_request_ends_run_after_current_step(session):
+    from house_agent.agent.runner import request_stop
+
+    profile = _profile(session)
+    run = create_run(session, profile, "manual")
+
+    class StopsAfterFirstRegion(FakeAgent):
+        def search_region(self, *args):
+            result = super().search_region(*args)
+            request_stop(run.id)  # user clicks Stop while the first county is being searched
+            return result
+
+    agent = StopsAfterFirstRegion(
+        regions={"Lenawee County, MI": {"region_checked": True, "listings": [_found("1 Farm Rd")]}}
+    )
+    done = execute_run(session, run.id, agent)
+    assert done.status == "cancelled"
+    assert len(agent.search_calls) == 1  # Monroe County never searched
+    assert done.summary["added"] == ["1 Farm Rd, Adrian, MI"]  # work so far is kept

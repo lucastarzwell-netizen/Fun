@@ -129,7 +129,7 @@ export interface RunSummary {
   excluded_imported?: number;
 }
 
-export type RunStatus = "queued" | "running" | "succeeded" | "partial" | "failed";
+export type RunStatus = "queued" | "running" | "succeeded" | "partial" | "failed" | "cancelled";
 
 export interface Run {
   id: number;
@@ -140,6 +140,7 @@ export interface Run {
   finished_at: string | null;
   created_at: string;
   summary: RunSummary;
+  stopping: boolean;
 }
 
 export interface RunDetail extends Run {

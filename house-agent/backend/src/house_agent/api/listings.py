@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..addresses import address_key
+from ..agent.runner import is_running, request_stop, stop_requested
 from ..auth import get_current_user
 from ..db import get_session
 from ..models import (
@@ -186,9 +187,36 @@ def list_runs(
     user: User = Depends(get_current_user),
 ):
     owned_profile(session, user, profile_id)
-    return session.scalars(
+    runs = session.scalars(
         select(Run).where(Run.profile_id == profile_id).order_by(Run.id.desc()).limit(limit)
     ).all()
+    return [_run_out(r) for r in runs]
+
+
+def _run_out(run: Run, cls=RunOut):
+    out = cls.model_validate(run)
+    out.stopping = run.status in ("queued", "running") and stop_requested(run.id)
+    return out
+
+
+@router.post("/runs/{run_id}/stop", response_model=RunOut)
+def stop_run(
+    run_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """Stop a search. It ends after the step in progress; results so far are kept."""
+    run = owned_run(session, user, run_id)
+    if run.status not in ("queued", "running"):
+        raise HTTPException(409, "This search isn't running")
+    if not is_running(run.profile_id):
+        # Nothing is executing it (e.g. left over from a crash): close it now.
+        run.status = "cancelled"
+        run.finished_at = datetime.now(UTC)
+        session.commit()
+        return _run_out(run)
+    request_stop(run.id)
+    return _run_out(run)
 
 
 @router.get("/runs/{run_id}", response_model=RunDetailOut)
@@ -197,7 +225,7 @@ def get_run(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    return owned_run(session, user, run_id)
+    return _run_out(owned_run(session, user, run_id), RunDetailOut)
 
 
 @router.get("/profiles/{profile_id}/stats", response_model=StatsOut)

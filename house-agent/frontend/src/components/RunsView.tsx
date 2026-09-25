@@ -12,6 +12,7 @@ const STATUS_TONE: Record<string, Tone> = {
   succeeded: "green",
   partial: "amber",
   failed: "red",
+  cancelled: "gray",
 };
 
 export function RunsView({ profileId }: { profileId: number }) {
@@ -58,6 +59,7 @@ function headline(run: Run) {
   const s = run.summary;
   if (run.trigger === "import") return `Imported ${s.listings_imported ?? 0} listings`;
   if (run.status === "running" || run.status === "queued") {
+    if (run.stopping) return "Stopping…";
     const p = s.progress;
     if (!p) return "Starting…";
     return p.phase === "recheck"
@@ -65,6 +67,7 @@ function headline(run: Run) {
       : `Searching ${p.current} (${p.done + 1}/${p.total})`;
   }
   const parts = [
+    ...(run.status === "cancelled" ? ["Stopped early"] : []),
     `${s.added?.length ?? 0} added`,
     `${s.removed?.length ?? 0} removed`,
     `${s.price_changes?.length ?? 0} price changes`,

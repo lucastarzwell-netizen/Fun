@@ -130,3 +130,40 @@ def test_add_manual_exclusion():
         )
         assert r.status_code == 201
         assert client.get(f"/api/profiles/{pid}/excluded").json()[0]["address"] == "5 Lane Ct"
+
+
+def test_stop_endpoint(tmp_path):
+    from house_agent.db import SessionLocal
+    from house_agent.models import Run
+
+    pid = _seed(tmp_path)
+    with SessionLocal() as s:
+        run = Run(profile_id=pid, trigger="manual", status="running", summary={})
+        s.add(run)
+        s.commit()
+        rid = run.id
+    with TestClient(app) as client:
+        # The app's startup closes runs left over from a previous process, so re-open it.
+        with SessionLocal() as s:
+            s.get(Run, rid).status = "running"
+            s.commit()
+        # Not executing in this process (left over): closed immediately.
+        r = client.post(f"/api/runs/{rid}/stop")
+        assert r.status_code == 200 and r.json()["status"] == "cancelled"
+        assert client.post(f"/api/runs/{rid}/stop").status_code == 409
+
+        # Executing: flagged, and the runner stops at the next step.
+        from house_agent.agent import runner
+
+        with SessionLocal() as s:
+            s.get(Run, rid).status = "running"
+            s.commit()
+        runner._running.add(pid)
+        try:
+            r = client.post(f"/api/runs/{rid}/stop")
+            assert r.status_code == 200 and r.json()["stopping"] is True
+            runs = client.get(f"/api/profiles/{pid}/runs").json()
+            assert any(x["id"] == rid and x["stopping"] for x in runs)
+        finally:
+            runner._running.discard(pid)
+        assert client.post("/api/runs/999/stop").status_code == 404

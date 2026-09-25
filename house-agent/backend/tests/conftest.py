@@ -13,8 +13,11 @@ from house_agent.db import Base, SessionLocal, engine, init_db  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def fresh_db():
+    from house_agent.agent import runner
+
     Base.metadata.drop_all(engine)
     init_db()
+    runner._stop_requested.clear()  # run ids restart with each fresh database
     yield
 
 

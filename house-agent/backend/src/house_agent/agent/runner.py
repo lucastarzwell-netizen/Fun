@@ -23,6 +23,21 @@ _running: set[int] = set()
 _running_lock = threading.Lock()
 
 
+# Runs the user asked to stop. Checked between steps, so the model call in flight finishes
+# first (usually well under a couple of minutes).
+_stop_requested: set[int] = set()
+
+
+def request_stop(run_id: int) -> None:
+    with _running_lock:
+        _stop_requested.add(run_id)
+
+
+def stop_requested(run_id: int) -> bool:
+    with _running_lock:
+        return run_id in _stop_requested
+
+
 def is_running(profile_id: int) -> bool:
     with _running_lock:
         return profile_id in _running
@@ -120,6 +135,8 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         _progress(session, run, "recheck", 0, len(active), "Re-checking tracked listings")
     batch = max(1, settings.check_batch_size)
     for start in range(0, len(active), batch):
+        if stop_requested(run.id):
+            break
         chunk = active[start : start + batch]
         items = [
             {
@@ -165,6 +182,8 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
     ]
     learned_ids = False
     for region in criteria.regions:
+        if stop_requested(run.id):
+            break
         label = f"{region.name}, {region.state}"
         known = [
             f"{a}, {c}, {s}"
@@ -217,6 +236,10 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
     run.status = "partial" if (errors or skipped_regions) else "succeeded"
     if errors and len(errors) >= len(criteria.regions) + (len(active) + batch - 1) // batch:
         run.status = "failed"
+    if stop_requested(run.id):
+        run.status = "cancelled"
+        with _running_lock:
+            _stop_requested.discard(run.id)
     run.finished_at = _now()
     logline(f"Done: {run.status}")
     session.commit()

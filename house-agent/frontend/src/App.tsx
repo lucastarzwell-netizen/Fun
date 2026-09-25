@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, History, Home, Loader2, LogOut, Monitor, Moon, Play, Plus, Settings2, Sun } from "lucide-react";
+import { Ban, History, Home, Loader2, LogOut, Monitor, Moon, Play, Plus, Settings2, Square, Sun } from "lucide-react";
 import { api } from "./lib/api";
 import { cx, dateTime } from "./lib/format";
 import { useTheme } from "./lib/theme";
@@ -78,6 +78,11 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
   const start = useMutation({
     mutationFn: () => api.startRun(profile!.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["runs", profile?.id] }),
+  });
+
+  const stop = useMutation({
+    mutationFn: (id: number) => api.stopRun(id),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["runs", profile?.id] }),
   });
 
   const lastRun = stats.data?.last_run;
@@ -191,7 +196,13 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
             Couldn't start the search: {(start.error as Error).message}
           </div>
         )}
-        {activeRun && <RunBanner progress={activeRun.summary.progress} />}
+        {activeRun && (
+          <RunBanner
+            progress={activeRun.summary.progress}
+            stopping={activeRun.stopping || stop.isPending}
+            onStop={() => stop.mutate(activeRun.id)}
+          />
+        )}
 
         {profiles.isLoading ? (
           <p className="text-stone-500">Loading…</p>
@@ -214,7 +225,15 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
   );
 }
 
-function RunBanner({ progress }: { progress?: RunProgress }) {
+function RunBanner({
+  progress,
+  stopping,
+  onStop,
+}: {
+  progress?: RunProgress;
+  stopping: boolean;
+  onStop: () => void;
+}) {
   const pct = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
   const label = !progress
     ? "Starting the search…"
@@ -226,9 +245,18 @@ function RunBanner({ progress }: { progress?: RunProgress }) {
       <div className="flex items-center gap-2">
         <Loader2 size={16} className="shrink-0 animate-spin" />
         <span className="font-medium">{label}</span>
-        <span className="ml-auto hidden text-xs opacity-80 sm:inline">
-          New listings show up as each county finishes.
+        <span className="ml-auto hidden text-xs opacity-80 md:inline">
+          {stopping ? "Stopping after the current step…" : "New listings show up as each county finishes."}
         </span>
+        <button
+          className="btn ml-auto shrink-0 border border-sky-300 bg-white px-2.5 py-1 text-xs text-sky-900 hover:bg-sky-100 md:ml-2 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100"
+          disabled={stopping}
+          onClick={() => {
+            if (confirm("Stop this search? Listings it has already found are kept.")) onStop();
+          }}
+        >
+          <Square size={12} /> {stopping ? "Stopping…" : "Stop search"}
+        </button>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sky-200/70 dark:bg-sky-900">
         <div className="h-full rounded-full bg-sky-600 transition-all duration-500" style={{ width: `${pct}%` }} />

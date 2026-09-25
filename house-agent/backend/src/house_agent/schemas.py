@@ -180,6 +180,7 @@ class RunOut(BaseModel):
     finished_at: UTCDatetime | None
     created_at: UTCDatetime
     summary: dict[str, Any]
+    stopping: bool = False
 
 
 class RunDetailOut(RunOut):
