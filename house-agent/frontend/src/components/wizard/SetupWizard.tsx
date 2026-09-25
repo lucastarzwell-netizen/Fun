@@ -40,6 +40,7 @@ type Step =
   | "condition"
   | "land"
   | "schedule"
+  | "email"
   | "review";
 
 /** The questions depend on the property types: homes get "condition", land gets "land". */
@@ -54,6 +55,7 @@ function stepsFor(a: WizardAnswers): Step[] {
     ...(hasHomes(a) ? (["condition"] as Step[]) : []),
     ...(hasLand(a) ? (["land"] as Step[]) : []),
     "schedule",
+    "email",
     "review",
   ];
 }
@@ -144,7 +146,8 @@ export function SetupWizard({
     size: true,
     condition: true,
     land: true,
-    schedule: !a.notify.email_enabled || a.notify.email_to.length > 0,
+    schedule: true,
+    email: !a.notify.email_enabled || a.notify.email_to.length > 0,
     review: !create.isPending,
   };
 
@@ -493,10 +496,31 @@ export function SetupWizard({
                   </label>
                 </div>
               )}
-              <div className="card space-y-2 p-4">
-                <div className="font-medium">Email summaries</div>
-                <EmailSettings value={a.notify} onChange={(notify) => set({ notify })} />
+            </Question>
+          )}
+
+          {step === "email" && (
+            <Question
+              title="Want a summary by email after each search?"
+              hint="It lists what the search found and your top listings, with links. You can send it to more than one address."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <OptionCard
+                  selected={a.notify.email_enabled}
+                  title="Yes, email me"
+                  hint="After every search"
+                  onClick={() => set({ notify: { ...a.notify, email_enabled: true } })}
+                />
+                <OptionCard
+                  selected={!a.notify.email_enabled}
+                  title="No thanks"
+                  hint="Check results in the app"
+                  onClick={() => set({ notify: { ...a.notify, email_enabled: false } })}
+                />
               </div>
+              {a.notify.email_enabled && (
+                <EmailSettings value={a.notify} onChange={(notify) => set({ notify })} hideToggle />
+              )}
             </Question>
           )}
 
@@ -555,7 +579,7 @@ export function SetupWizard({
                       .join(". ") || "No land preferences"}
                   </Row>
                 )}
-                <Row label="Email" onEdit={() => setStep("schedule")}>
+                <Row label="Email" onEdit={() => setStep("email")}>
                   {a.notify.email_enabled && a.notify.email_to.length
                     ? `Top ${a.notify.top_n} to ${a.notify.email_to.join(", ")}`
                     : "Off"}

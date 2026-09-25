@@ -11,9 +11,12 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export function EmailSettings({
   value,
   onChange,
+  hideToggle = false,
 }: {
   value: NotifySettings;
   onChange: (v: NotifySettings) => void;
+  /** The caller asks yes/no itself (setup); show only the address and count fields. */
+  hideToggle?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +43,7 @@ export function EmailSettings({
 
   return (
     <div className="space-y-4">
+      {!hideToggle && (
       <label className="flex items-center gap-2 text-sm font-medium">
         <input
           type="checkbox"
@@ -49,11 +53,12 @@ export function EmailSettings({
         />
         Email a summary with the top listings after each search
       </label>
+      )}
 
       {value.email_enabled && (
         <>
           <div className="space-y-2">
-            <div className="text-sm font-medium text-stone-700 dark:text-stone-300">Send to</div>
+            <div className="text-sm font-medium text-stone-700 dark:text-stone-300">Email addresses</div>
             <div className="flex flex-wrap gap-2">
               {value.email_to.map((addr) => (
                 <span

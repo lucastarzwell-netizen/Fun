@@ -80,4 +80,6 @@ if FRONTEND_DIST.is_dir():
         file = FRONTEND_DIST / path
         if path and file.is_file():
             return FileResponse(file)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        # Always revalidate the page itself so an update shows up on the next load
+        # (the hashed JS/CSS files it points to can be cached forever).
+        return FileResponse(FRONTEND_DIST / "index.html", headers={"Cache-Control": "no-cache"})
