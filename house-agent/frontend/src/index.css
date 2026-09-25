@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+
+  --color-pine-50: #eef6f2;
+  --color-pine-100: #d5eadf;
+  --color-pine-200: #aed5c2;
+  --color-pine-300: #7fb9a0;
+  --color-pine-400: #4f987c;
+  --color-pine-500: #2f7a60;
+  --color-pine-600: #1f5f4a;
+  --color-pine-700: #1a4c3c;
+  --color-pine-800: #163d31;
+  --color-pine-900: #112e25;
+
+  --color-sand-50: #fbf8f2;
+  --color-sand-100: #f6f1e7;
+  --color-sand-200: #ebe2d0;
+  --color-sand-300: #dccdb0;
+}
+
+@layer base {
+  body {
+    @apply bg-sand-50 text-stone-800 antialiased dark:bg-stone-950 dark:text-stone-200;
+  }
+}
+
+@utility card {
+  @apply rounded-2xl border border-stone-200/80 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm shadow-xs outline-none transition focus:border-pine-500 focus:ring-2 focus:ring-pine-500/20 dark:border-stone-700 dark:bg-stone-900;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-pine-600 text-white shadow-sm hover:bg-pine-700;
+}
+
+@utility btn-ghost {
+  @apply btn text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800;
+}
+
+@utility btn-outline {
+  @apply btn border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800;
+}

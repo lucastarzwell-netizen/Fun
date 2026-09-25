@@ -1,0 +1,42 @@
+{
+  "profile": {
+    "name": "Example: rural houses near DTW",
+    "criteria": {
+      "property_types": [
+        "house"
+      ],
+      "min_price": 100000,
+      "max_price": 175000,
+      "min_acres": 1,
+      "anchors": [
+        {
+          "code": "DTW",
+          "name": "Detroit Metropolitan Airport",
+          "max_drive_hours": 2.0
+        }
+      ],
+      "regions": [
+        {
+          "name": "Lenawee County",
+          "state": "MI",
+          "anchor": "DTW",
+          "redfin_county_id": 1393
+        },
+        {
+          "name": "Monroe County",
+          "state": "MI",
+          "anchor": "DTW",
+          "redfin_county_id": 1405
+        }
+      ],
+      "include_nearby": true,
+      "condition_rules": "Exclude anything needing major repairs to be habitable: e.g. \"cash only\", foreclosure sold as-is with no access, \"extensive TLC\", \"needs work throughout\", fixer-upper/restore/rehab, mold/leaks/damage, stripped to studs, unfinished shell.\nHouses that only need cosmetic updating or \"some TLC\" stay, labeled needs_updating.\nPlain \"as-is\" or estate as-is with no repair language is fine.",
+      "extra_instructions": "US only. Single-family houses only: no vacant land, no park models/RV lots, no churches or commercial property. Exclude auctions and short sales."
+    },
+    "schedule_cron": "0 7 * * 5",
+    "timezone": "America/New_York",
+    "enabled": false
+  },
+  "listings": [],
+  "excluded": []
+}
