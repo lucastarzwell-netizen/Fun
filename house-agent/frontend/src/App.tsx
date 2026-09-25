@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, History, Home, Loader2, Monitor, Moon, Play, Plus, Settings2, Sun } from "lucide-react";
+import { Ban, History, Home, Loader2, LogOut, Monitor, Moon, Play, Plus, Settings2, Sun } from "lucide-react";
 import { api } from "./lib/api";
 import { cx, dateTime } from "./lib/format";
 import { useTheme } from "./lib/theme";
@@ -10,6 +10,7 @@ import { ExcludedView } from "./components/ExcludedView";
 import { RunsView } from "./components/RunsView";
 import { SettingsView } from "./components/SettingsView";
 import { SetupWizard } from "./components/wizard/SetupWizard";
+import { LoginScreen } from "./components/LoginScreen";
 
 type Tab = "listings" | "excluded" | "runs" | "settings";
 
@@ -21,6 +22,13 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function App() {
+  const auth = useQuery({ queryKey: ["auth"], queryFn: api.me, staleTime: Infinity });
+  if (auth.isLoading) return null;
+  if (auth.data?.required && !auth.data.authenticated) return <LoginScreen />;
+  return <Dashboard signOut={auth.data?.required ? api.logout : undefined} />;
+}
+
+function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
   const qc = useQueryClient();
   const [tab, setTab] = useLocal<Tab>("tab", "listings");
   const [profileId, setProfileId] = useLocal<number | null>("profileId", null);
@@ -116,6 +124,15 @@ export default function App() {
               <Plus size={16} />
               <span className="hidden sm:inline">New search</span>
             </button>
+            {signOut && (
+              <button
+                className="btn-ghost p-2"
+                title="Sign out"
+                onClick={() => signOut().then(() => qc.invalidateQueries())}
+              >
+                <LogOut size={18} />
+              </button>
+            )}
             <button
               className="btn-ghost p-2"
               title={`Theme: ${theme}`}

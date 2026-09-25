@@ -42,7 +42,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const json = (body: unknown) => JSON.stringify(body);
 
+export interface AuthState {
+  required: boolean;
+  authenticated: boolean;
+}
+
 export const api = {
+  me: () => request<AuthState>("/api/auth/me"),
+  login: (password: string) =>
+    request<AuthState>("/api/auth/login", { method: "POST", body: json({ password }) }),
+  logout: () => request<AuthState>("/api/auth/logout", { method: "POST" }),
+
   profiles: () => request<Profile[]>("/api/profiles"),
   createProfile: (body: ProfileIn) =>
     request<Profile>("/api/profiles", { method: "POST", body: json(body) }),

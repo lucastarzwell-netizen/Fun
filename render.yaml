@@ -1,0 +1,26 @@
+# Render Blueprint for House Agent (https://render.com/docs/blueprint-spec).
+# Deploy: https://render.com/deploy?repo=https://github.com/lucastarzwell-netizen/Fun
+services:
+  - type: web
+    name: house-agent
+    runtime: docker
+    dockerfilePath: ./house-agent/Dockerfile
+    dockerContext: ./house-agent
+    # Paid instance: the free tier sleeps (so scheduled searches wouldn't fire) and has no disk.
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: house-agent-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false # entered in the Render dashboard at deploy time
+      - key: HOUSE_AGENT_PASSWORD
+        sync: false # the password for the sign-in screen
+      - key: HOUSE_AGENT_SECRET
+        generateValue: true
+      - key: HOUSE_AGENT_SECURE_COOKIES
+        value: "1"
+      - key: HOUSE_AGENT_CORS_ORIGINS
+        value: ""

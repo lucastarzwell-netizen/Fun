@@ -89,6 +89,28 @@ Run one search from the terminal (runs in the foreground and prints the summary)
 house-agent run 1
 ```
 
+## Deploy (Render)
+
+`render.yaml` at the repo root is a Render Blueprint. It builds `house-agent/Dockerfile`
+(the dashboard plus the API in one container) and attaches a 1 GB disk for the database.
+
+1. Open https://render.com/deploy?repo=https://github.com/lucastarzwell-netizen/Fun, or in
+   the Render dashboard choose **New → Blueprint** and pick this repo. Render reads
+   `render.yaml` from the default branch (`main`), so merge this work into `main` first, or
+   choose the branch in the Blueprint screen.
+2. Render asks for two values:
+   - `ANTHROPIC_API_KEY`: your Claude API key (create one at console.anthropic.com).
+   - `HOUSE_AGENT_PASSWORD`: the password for the app's sign-in screen. Use a long one.
+3. Deploy. The app is then live at `https://house-agent-XXXX.onrender.com`. The first
+   visit asks for the password, then starts the guided setup.
+
+It uses Render's Starter plan (about $7/month) plus about $0.25/month for the disk. The
+free plan won't work: it sleeps when idle, so scheduled searches wouldn't run, and it has no
+disk, so the database would be wiped. Claude API usage is billed separately by Anthropic.
+
+To move your existing Google Sheet search over after deploying, open a Render **Shell** on
+the service and run `house-agent import <file>` with your seed file.
+
 ### Configuration (environment variables)
 
 | Variable | Default | |
@@ -100,6 +122,9 @@ house-agent run 1
 | `HOUSE_AGENT_DATABASE_URL` | `sqlite:///backend/data/house_agent.db` | Any SQLAlchemy URL (e.g. Postgres) |
 | `HOUSE_AGENT_SCHEDULER` | `1` | `0` turns off the in-process scheduler |
 | `HOUSE_AGENT_CORS_ORIGINS` | Vite dev origins | |
+| `HOUSE_AGENT_PASSWORD` | (unset: no sign-in) | Set on any public deployment |
+| `HOUSE_AGENT_SECRET` | derived from password | Key that signs session cookies |
+| `HOUSE_AGENT_SECURE_COOKIES` | `0` | `1` when served over HTTPS |
 
 ## Adding logins later
 
@@ -107,9 +132,9 @@ The app runs as a single local user today, but it's built so login can be added 
 
 - Every search profile has an `owner_id`, and every API route loads data only through the
   current user's profiles (`api/deps.py`).
-- `auth.get_current_user` is the one place that decides who the user is. Replace it with
-  session-cookie or token validation (for example an OAuth provider) and add a `/login`
-  route. Nothing else in the API changes.
+- `auth.get_current_user` is the one place that decides who the user is. Today it checks
+  the optional shared password's session cookie. Replace it with per-user sessions (for
+  example an OAuth provider). Nothing else in the API changes.
 - The frontend already sends `credentials: "include"` on every request.
 
 ## Tests
