@@ -19,6 +19,7 @@ from .auth import ensure_default_user
 from .auth import router as auth_router
 from .config import settings
 from .db import SessionLocal, init_db
+from .naming import fix_existing_duplicates
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -37,6 +38,10 @@ async def lifespan(app: FastAPI):
         ensure_default_user(session)
         if n := mark_interrupted_runs(session):
             logging.getLogger(__name__).warning("Closed %d run(s) interrupted by a restart", n)
+        for old_name, new_name in fix_existing_duplicates(session):
+            logging.getLogger(__name__).info(
+                "Renamed duplicate search %r to %r", old_name, new_name
+            )
     if settings.scheduler_enabled:
         scheduler.start()
     yield

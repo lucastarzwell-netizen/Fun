@@ -265,9 +265,9 @@ def test_duplicate_search_names_get_a_timestamp():
 def test_unique_name_uses_the_search_time_zone(session):
     from datetime import UTC, datetime
 
-    from house_agent.api.profiles import unique_name
     from house_agent.auth import ensure_default_user
     from house_agent.models import SearchProfile
+    from house_agent.naming import unique_name
 
     user = ensure_default_user(session)
     session.add(SearchProfile(owner_id=user.id, name="Land near DCA", criteria={}))
