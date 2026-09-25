@@ -234,3 +234,20 @@ def test_old_database_gets_new_columns(tmp_path):
         row = conn.execute(text("SELECT user_included, market_status FROM listings")).one()
     assert tuple(row) == (0, "active")
     init_db(engine)  # running again is a no-op
+
+
+def test_duplicate_search_names_get_a_number():
+    with TestClient(app) as client:
+        body = {**SEED["profile"], "name": "Land near DCA"}
+        names = [client.post("/api/profiles", json=body).json()["name"] for _ in range(3)]
+        assert names == ["Land near DCA", "Land near DCA 2", "Land near DCA 3"]
+
+        # Case and spacing don't make a name different.
+        r = client.post("/api/profiles", json={**body, "name": "  land  near dca "})
+        assert r.json()["name"] == "land near dca 4"
+
+        # Renaming onto a taken name gets a number too; keeping your own name doesn't.
+        pid = client.post("/api/profiles", json={**body, "name": "Houses near BOS"}).json()["id"]
+        assert client.put(f"/api/profiles/{pid}", json=body).json()["name"] == "Land near DCA 5"
+        again = client.put(f"/api/profiles/{pid}", json={**body, "name": "Land near DCA 5"})
+        assert again.json()["name"] == "Land near DCA 5"

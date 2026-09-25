@@ -21,6 +21,25 @@ def _out(profile: SearchProfile) -> ProfileOut:
     return out
 
 
+def _norm(name: str) -> str:
+    return " ".join(name.split()).casefold()
+
+
+def unique_name(session: Session, owner_id: int, name: str, exclude_id: int | None = None) -> str:
+    """Return `name`, or `name 2`, `name 3`, ... if the user already has a search called that."""
+    name = " ".join(name.split()) or "My search"
+    q = select(SearchProfile.name).where(SearchProfile.owner_id == owner_id)
+    if exclude_id is not None:
+        q = q.where(SearchProfile.id != exclude_id)
+    taken = {_norm(n) for n in session.scalars(q)}
+    if _norm(name) not in taken:
+        return name
+    n = 2
+    while _norm(f"{name} {n}") in taken:
+        n += 1
+    return f"{name} {n}"
+
+
 def _validate_cron(body: ProfileIn) -> None:
     if body.schedule_cron.strip():
         try:
@@ -44,7 +63,9 @@ def create_profile(
     user: User = Depends(get_current_user),
 ):
     _validate_cron(body)
-    profile = SearchProfile(owner_id=user.id, **body.model_dump(mode="json"))
+    data = body.model_dump(mode="json")
+    data["name"] = unique_name(session, user.id, body.name)
+    profile = SearchProfile(owner_id=user.id, **data)
     session.add(profile)
     session.commit()
     scheduler.sync_profile(profile)
@@ -69,7 +90,9 @@ def update_profile(
 ):
     _validate_cron(body)
     profile = owned_profile(session, user, profile_id)
-    for key, value in body.model_dump(mode="json").items():
+    data = body.model_dump(mode="json")
+    data["name"] = unique_name(session, user.id, body.name, exclude_id=profile.id)
+    for key, value in data.items():
         setattr(profile, key, value)
     session.commit()
     scheduler.sync_profile(profile)
