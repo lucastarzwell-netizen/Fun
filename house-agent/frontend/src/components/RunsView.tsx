@@ -115,6 +115,11 @@ function RunDetail({ id }: { id: number }) {
         items={s.status_changes?.map((c) => `${c.listing}: ${c.old} → ${c.new}`.replaceAll("contingent", "under contract"))}
       />
       <Section title="Skipped (excluded)" items={s.skipped_excluded} />
+      <Section
+        title="Missed by earlier sweeps"
+        items={s.sweep_misses?.map((m) => `${m.listing} (${m.county}; on the market ${m.days_on_market} days)`)}
+        tone="amber"
+      />
       <Section title="Regions not checked" items={s.skipped_regions} tone="amber" />
       <Section title="Errors" items={s.errors} tone="red" />
       {s.sites && Object.keys(s.sites).length > 0 && (
@@ -144,8 +149,8 @@ function RunDetail({ id }: { id: number }) {
           <h4 className="mb-1 font-medium">Tracked listings</h4>
           <p className="text-stone-600 dark:text-stone-400">
             {s.checks.seen_in_search} confirmed during the county searches · {s.checks.status_checked} quick
-            checks · {s.checks.skipped_recent} skipped (checked in the last few days) · {s.checks.reread} re-read
-            for condition
+            checks · {s.checks.skipped_recent} skipped (checked in the last few days) · {s.checks.reread} read
+            for condition{s.checks.new_read ? ` (${s.checks.new_read} new from sweeps)` : ""}
           </p>
         </div>
       )}
@@ -202,10 +207,11 @@ function UsageSection({ usage, regions }: { usage: Usage; regions?: RunSummary["
         <details className="mt-2">
           <summary className="cursor-pointer text-stone-600 dark:text-stone-400">By county</summary>
           <div className="mt-1 overflow-x-auto">
-            <table className="w-full min-w-[420px] text-left text-xs">
+            <table className="w-full min-w-[480px] text-left text-xs">
               <thead className="text-stone-500">
                 <tr>
                   <th className="py-1 pr-3 font-medium">County</th>
+                  <th className="py-1 pr-3 font-medium">Search</th>
                   <th className="py-1 pr-3 font-medium">New</th>
                   <th className="py-1 pr-3 font-medium">Tracked seen</th>
                   <th className="py-1 pr-3 font-medium">Pages (budget)</th>
@@ -216,6 +222,11 @@ function UsageSection({ usage, regions }: { usage: Usage; regions?: RunSummary["
                 {counties.map(([label, r]) => (
                   <tr key={label} className="border-t border-stone-100 dark:border-stone-800">
                     <td className="py-1 pr-3">{label}</td>
+                    <td className="py-1 pr-3" title={r.why || undefined}>
+                      {r.model ? (MODEL_NAMES[r.model] ?? r.model) : "Full"}
+                      {r.why === "rotating check" && " (check)"}
+                      {r.why === "first search" && " (first)"}
+                    </td>
                     <td className="py-1 pr-3 tabular-nums">{r.added}</td>
                     <td className="py-1 pr-3 tabular-nums">{r.seen_tracked}</td>
                     <td className="py-1 pr-3 tabular-nums">

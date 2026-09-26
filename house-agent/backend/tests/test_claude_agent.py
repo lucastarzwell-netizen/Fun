@@ -133,4 +133,8 @@ def test_county_search_uses_main_model_budget_and_fallbacks():
     assert request["output_config"] == {"effort": "medium"}
     fetch = next(t for t in request["tools"] if t["name"] == "web_fetch")
     assert fetch["max_uses"] == 12
-    assert "about 12 pages" in request["messages"][0]["content"]
+    fetch_tool = next(t for t in request["tools"] if t["name"] == "web_fetch")
+    assert fetch_tool["max_content_tokens"] == 25000
+    shared, specific = request["messages"][0]["content"]
+    assert shared["cache_control"] == {"type": "ephemeral"} and "cache_control" not in specific
+    assert "Buyer's criteria" in shared["text"] and "about 12 pages" in specific["text"]

@@ -188,10 +188,12 @@ class ClaudeSearchAgent:
         client: anthropic.Anthropic | None = None,
         model: str | None = None,
         check_model: str | None = None,
+        sweep_model: str | None = None,
     ):
         self.client = client or anthropic.Anthropic()
         self.model = model or settings.model
         self.check_model = check_model or settings.check_model
+        self.sweep_model = sweep_model or settings.sweep_model
         self.usage = Usage()
 
     # -- public API --------------------------------------------------------------------
@@ -206,17 +208,21 @@ class ClaudeSearchAgent:
         excluded,
         rejected=None,
         fetch_budget=None,
+        mode="full",
     ):
+        """mode "full": judge every candidate (main model). "sweep": a routine pass with the
+        cheaper sweep model that reports new candidates unverified for the main model to read."""
         budget = fetch_budget or settings.search_fetches
         prompt = prompts.search_prompt(
-            criteria, region_label, region_anchor, plan, tracked, excluded, rejected, budget
+            criteria, region_label, region_anchor, plan, tracked, excluded, rejected, budget, mode
         )
+        sweep = mode == "sweep"
         return self._run(
             prompt,
             SEARCH_TOOL,
             SearchResult,
-            model=self.model,
-            effort=settings.effort,
+            model=self.sweep_model if sweep else self.model,
+            effort=settings.sweep_effort if sweep else settings.effort,
             fetch_budget=budget,
             search_budget=settings.search_web_searches,
         )
@@ -252,13 +258,18 @@ class ClaudeSearchAgent:
     ) -> list[dict[str, Any]]:
         return [
             {"type": "web_search_20260209", "name": "web_search", "max_uses": search_budget},
-            {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": fetch_budget},
+            {
+                "type": "web_fetch_20260209",
+                "name": "web_fetch",
+                "max_uses": fetch_budget,
+                "max_content_tokens": settings.page_tokens,
+            },
             submit,
         ]
 
     def _run(
         self,
-        prompt: str,
+        prompt: str | tuple[str, str],
         submit: dict[str, Any],
         result_type: type[T],
         *,
@@ -267,7 +278,17 @@ class ClaudeSearchAgent:
         fetch_budget: int,
         search_budget: int,
     ) -> T:
-        messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+        if isinstance(prompt, tuple):
+            # (shared, specific): the shared part is the same for every county in a run, so
+            # cache it; later counties pay a tenth for it.
+            shared, specific = prompt
+            content: Any = [
+                {"type": "text", "text": shared, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": specific},
+            ]
+        else:
+            content = prompt
+        messages: list[dict[str, Any]] = [{"role": "user", "content": content}]
         tools = self._tools(submit, fetch_budget, search_budget)
         extra: dict[str, Any] = {}
         if _supports_fallbacks(model):

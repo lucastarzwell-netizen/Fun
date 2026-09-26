@@ -28,6 +28,9 @@ class FoundListing(BaseModel):
         default=None, description="Canadian searches: estimated driving distance in km"
     )
     condition: Literal["good", "needs_updating", "unverified", "reject"]
+    days_on_market: int | None = Field(
+        default=None, description="Days on market / on the site, if the page shows it"
+    )
     market_status: Literal["active", "pending", "contingent"] = Field(
         default="active", description="Listing status as shown on the listing page"
     )

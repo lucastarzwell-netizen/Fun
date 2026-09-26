@@ -21,7 +21,13 @@ backend/   Python API (FastAPI + SQLite), scheduler, and the Claude search agent
    (e.g. airports plus a maximum drive time), the regions to search (counties, optionally
    with a Redfin county ID), the condition rules, and a weekly schedule.
 3. On each run, `agent/runner.py`:
-   - **searches** each county, spreading the work across listing sites. It judges listings
+   - **searches** each county, spreading the work across listing sites. A county's first
+     search is a full one with the main model (Opus). After that it's swept weekly with a
+     cheaper model (Sonnet) that works from results pages and reports new candidates
+     unverified; the main model then reads each new one and judges its condition. About one
+     county in four gets a full search each week as a check, and any listing that check finds
+     which was already on the market at the previous sweep is logged as a miss on the Runs
+     page. It judges listings
      from the results pages, opens the pages of promising candidates (within a page budget
      per county), and labels their condition as `good`, `needs_updating` or `reject`.
      Tracked listings it passes on a results page are reported with their current price and
@@ -130,6 +136,11 @@ the service and run `house-agent import <file>` with your seed file.
 | `ANTHROPIC_API_KEY` | (required for runs) | |
 | `HOUSE_AGENT_MODEL` | `claude-opus-5` | County searches and condition re-reads. Must support the `*_20260209` web tools and adaptive thinking (Opus 4.6+, Sonnet 4.6+) |
 | `HOUSE_AGENT_EFFORT` | `medium` | Effort for that model: `low` / `medium` / `high`; lower costs less |
+| `HOUSE_AGENT_SWEEP_MODEL` | `claude-sonnet-5` | Weekly county sweeps after a county's first search. Set it to the same model as `HOUSE_AGENT_MODEL` to search every county with that model |
+| `HOUSE_AGENT_SWEEP_EFFORT` | `low` | Effort for sweeps |
+| `HOUSE_AGENT_AUDIT_EVERY` | `4` | Each county gets a full search every this many runs, staggered (`0` = never) |
+| `HOUSE_AGENT_NEW_READ_LIMIT` | `40` | Most new sweep finds read by the main model per run |
+| `HOUSE_AGENT_PAGE_TOKENS` | `25000` | Most text kept from each page the agent opens |
 | `HOUSE_AGENT_CHECK_MODEL` | `claude-sonnet-5` | Quick status/price checks. Same tool requirements (not Haiku) |
 | `HOUSE_AGENT_CHECK_EFFORT` | `low` | Effort for status checks |
 | `HOUSE_AGENT_SEARCH_FETCHES` | `20` | Pages the agent may open per county search |

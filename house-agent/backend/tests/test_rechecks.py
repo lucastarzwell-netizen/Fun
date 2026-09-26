@@ -63,6 +63,7 @@ def test_listings_seen_in_search_skip_their_own_check(session):
         "status_checked": 1,
         "skipped_recent": 0,
         "reread": 1,
+        "new_read": 0,
     }
     session.expire_all()
     farm = _listing(session, profile, "1 Farm Rd")
@@ -214,3 +215,102 @@ def test_usage_is_split_by_model_with_cost_estimate():
     assert out["by_model"]["claude-sonnet-5"]["est_cost_usd"] == 3.0  # $2 + 0.1M * $10
     assert out["est_cost_usd"] == 10.5
     assert list(usage.since(before)["by_model"]) == ["claude-sonnet-5"]
+
+
+def _settings(monkeypatch, **changes):
+    monkeypatch.setattr(runner, "settings", dataclasses.replace(runner.settings, **changes))
+
+
+def test_first_search_is_full_then_counties_are_swept(session, monkeypatch):
+    _settings(monkeypatch, audit_every_runs=0, model="claude-opus-5", sweep_model="claude-sonnet-5")
+    profile = _profile(session)
+    first = FakeAgent()
+    run1 = _run(session, profile, first)
+    assert {c["mode"] for c in first.search_calls} == {"full"}
+    assert run1.summary["region_stats"][LENAWEE]["why"] == "first search"
+
+    second = FakeAgent()
+    run2 = _run(session, profile, second)
+    assert {c["mode"] for c in second.search_calls} == {"sweep"}
+    assert run2.summary["region_stats"][LENAWEE]["model"] == "claude-sonnet-5"
+
+
+def test_same_model_for_sweeps_turns_tiers_off(session, monkeypatch):
+    _settings(monkeypatch, model="claude-opus-5", sweep_model="claude-opus-5")
+    profile = _profile(session)
+    _run(session, profile, FakeAgent())
+    agent = FakeAgent()
+    _run(session, profile, agent)
+    assert {c["mode"] for c in agent.search_calls} == {"full"}
+
+
+def test_sweep_finds_are_read_by_the_main_model(session, monkeypatch):
+    _settings(monkeypatch, audit_every_runs=0, model="claude-opus-5", sweep_model="claude-sonnet-5")
+    profile = _profile(session)
+    _run(session, profile, FakeAgent())
+    sweep = {
+        LENAWEE: {
+            "region_checked": True,
+            "listings": [
+                _found("7 New Rd", condition="unverified"),
+                _found("8 Wreck Rd", condition="unverified"),
+            ],
+        }
+    }
+    agent = FakeAgent(
+        regions=sweep,
+        checks={
+            "7 New Rd": {"status": "active", "condition": "good"},
+            "8 Wreck Rd": {
+                "status": "active",
+                "condition": "reject",
+                "reject_reason": "Needs a new foundation.",
+            },
+        },
+    )
+    run = _run(session, profile, agent)
+    assert agent.reread_calls == [["7 New Rd", "8 Wreck Rd"]]
+    assert run.summary["checks"]["new_read"] == 2
+    # Only the one that passed the main model's reading counts as new.
+    assert run.summary["added"] == ["7 New Rd, Adrian, MI"]
+    assert run.summary["rejected"][0]["reason"] == "Needs a new foundation."
+    assert _listing(session, profile, "7 New Rd").condition == "good"
+    assert _listing(session, profile, "8 Wreck Rd").listing_state == "rejected"
+
+
+def test_rotating_check_records_what_sweeps_missed(session, monkeypatch):
+    _settings(monkeypatch, audit_every_runs=0, model="claude-opus-5", sweep_model="claude-sonnet-5")
+    profile = _profile(session)
+    _run(session, profile, FakeAgent())  # first (full) search
+    _run(session, profile, FakeAgent())  # sweep
+    _settings(monkeypatch, audit_every_runs=1, model="claude-opus-5", sweep_model="claude-sonnet-5")
+    old = {**_found("9 Old Listing Rd"), "days_on_market": 30}
+    fresh = {**_found("10 Just Listed Rd"), "days_on_market": 0}
+    agent = FakeAgent(regions={LENAWEE: {"region_checked": True, "listings": [old, fresh]}})
+    run = _run(session, profile, agent)
+    assert {c["mode"] for c in agent.search_calls} == {"full"}
+    assert run.summary["region_stats"][LENAWEE]["why"] == "rotating check"
+    assert run.summary["sweep_misses"] == [
+        {"listing": "9 Old Listing Rd, Adrian, MI", "county": LENAWEE, "days_on_market": 30}
+    ]
+
+
+def test_full_searches_run_before_sweeps(session, monkeypatch):
+    _settings(monkeypatch, audit_every_runs=0, model="claude-opus-5", sweep_model="claude-sonnet-5")
+    profile = _profile(session)
+    _run(session, profile, FakeAgent())
+    # A county added later gets its first (full) search before the swept ones.
+    profile.criteria = {
+        **profile.criteria,
+        "regions": [
+            *profile.criteria["regions"],
+            {"name": "Hillsdale County", "state": "MI", "anchor": "DTW"},
+        ],
+    }
+    session.commit()
+    agent = FakeAgent()
+    _run(session, profile, agent)
+    assert [(c["label"], c["mode"]) for c in agent.search_calls][0] == (
+        "Hillsdale County, MI",
+        "full",
+    )

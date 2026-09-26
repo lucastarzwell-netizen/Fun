@@ -33,6 +33,25 @@ class Settings:
     check_effort: str = field(
         default_factory=lambda: os.environ.get("HOUSE_AGENT_CHECK_EFFORT", "low")
     )
+    # County searches after a county's first one ("sweeps"): mostly reading results pages and
+    # confirming tracked listings, so a cheaper model. New finds are then judged by `model`.
+    # Set HOUSE_AGENT_SWEEP_MODEL to the same model as HOUSE_AGENT_MODEL to search every
+    # county with it.
+    sweep_model: str = field(
+        default_factory=lambda: os.environ.get("HOUSE_AGENT_SWEEP_MODEL", "claude-sonnet-5")
+    )
+    sweep_effort: str = field(
+        default_factory=lambda: os.environ.get("HOUSE_AGENT_SWEEP_EFFORT", "low")
+    )
+    # Each county also gets a full search with `model` every this many runs (staggered, so
+    # about 1/N of counties per run), which also measures what sweeps miss. 0 = never.
+    audit_every_runs: int = field(default_factory=lambda: _int("HOUSE_AGENT_AUDIT_EVERY", 4))
+    # Most new sweep finds whose condition is read by `model` in the run that found them;
+    # the rest wait for the next run.
+    new_read_limit: int = field(default_factory=lambda: _int("HOUSE_AGENT_NEW_READ_LIMIT", 40))
+    # Most text kept from each page the agent opens (tokens). Results pages list their
+    # listings well before this; what's cut is mostly page footer and "similar homes".
+    page_tokens: int = field(default_factory=lambda: _int("HOUSE_AGENT_PAGE_TOKENS", 25000))
     # Page opens per county search, and for counties that found nothing new in their last
     # `quiet_after_runs` searches.
     search_fetches: int = field(default_factory=lambda: _int("HOUSE_AGENT_SEARCH_FETCHES", 20))

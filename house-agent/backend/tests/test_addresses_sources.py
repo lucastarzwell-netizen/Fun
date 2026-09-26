@@ -81,9 +81,11 @@ def test_prompt_includes_feedback_and_previous_rejections():
     from house_agent.agent.prompts import search_prompt
 
     c = Criteria(feedback=['1 A Rd: you rejected it; the buyer included it anyway: "ok"'])
-    text = search_prompt(c, "X County, MI", "DTW", [], [], [], ["2 B Rd, X, MI (was $100,000)"])
+    text = "\n\n".join(
+        search_prompt(c, "X County, MI", "DTW", [], [], [], ["2 B Rd, X, MI (was $100,000)"])
+    )
     assert "The buyer's corrections to your earlier rejections" in text
-    assert "skip them unless the price shown now is lower" in text
+    assert "skip these unless the price shown now is lower" in text
     assert "reject_reason" in text
     # Feedback is runtime-only; it never gets saved with the profile.
     assert "feedback" not in c.model_dump()
@@ -107,7 +109,7 @@ def test_search_prompt_lists_sites_in_order():
     from house_agent.agent.prompts import search_prompt
 
     plan = [("zillow", "https://z"), ("redfin", None)]
-    text = search_prompt(Criteria(), "X County, MI", "DTW", plan, [], [])
+    text = "\n\n".join(search_prompt(Criteria(), "X County, MI", "DTW", plan, [], []))
     assert text.index("- zillow (Zillow). Start here: https://z") < text.index("- redfin (Redfin).")
 
 
@@ -145,5 +147,5 @@ def test_canadian_searches_use_canadian_sites_and_conventions():
     block = criteria_block(ca)
     assert block.startswith("Country: Canada.") and "hectares" in block
     assert "Realtor.ca" in check_prompt(ca, [])
-    assert "- zolo (Zolo)." in search_prompt(ca, "Frontenac County, ON", "YGK", plan, [], [])
+    assert "- zolo (Zolo)." in search_prompt(ca, "Frontenac County, ON", "YGK", plan, [], [])[1]
     assert criteria_block(Criteria()).startswith("Country: United States.")

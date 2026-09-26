@@ -149,7 +149,10 @@ def search_prompt(
     excluded: list[str],
     rejected: list[str] | None = None,
     fetch_budget: int | None = None,
-) -> str:
+    mode: str = "full",
+) -> tuple[str, str]:
+    """(shared, specific): the shared part is identical for every county searched in the same
+    mode in a run (so it can be cached); the specific part is this county's."""
     if plan:
         lines = []
         for key, url in plan:
@@ -169,14 +172,44 @@ def search_prompt(
         )
     else:
         where = f"Find current listings in {region_label} with web_search."
-    parts = [
-        f"Search {region_label} for listings that match the buyer's criteria. "
+
+    shared = ["Buyer's criteria:\n" + criteria_block(c)]
+    if excluded:
+        shared.append(
+            "Ruled out by the buyer; never report these:\n" + "\n".join(f"- {e}" for e in excluded)
+        )
+    if mode == "sweep":
+        shared.append(
+            "This is a routine weekly sweep of a county searched before, working from results "
+            "pages. Report every listing that passes the price, lot size, type and status "
+            "filters and isn't tracked, ruled out, or previously rejected at the same or a "
+            "higher price. Report them with condition unverified and condition_notes summing up "
+            "what the results card shows; don't open listing pages to judge condition (another "
+            "reviewer reads each new one). Open a listing page only when its card doesn't show "
+            "price, lot size, type or location. Include days_on_market when shown. Don't report "
+            "listings the results page already shows fail the filters. Then call "
+            "submit_search_results."
+        )
+    else:
+        shared.append(
+            "For every listing that matches the price/lot/type filters and isn't tracked, ruled "
+            "out or previously rejected at the same or a higher price, read its listing page's "
+            "description (within the page budget) and label its condition. Report every "
+            "candidate: the matches, and the ones you reject (condition reject, with a "
+            "one-sentence reject_reason addressed to the buyer naming the rule it failed, e.g. "
+            '"Listing says it needs a new roof and foundation work; you asked for cosmetic '
+            'updates only."). The buyer reviews rejections, so be specific. Include '
+            "days_on_market when shown. Don't report listings the results page already shows "
+            "fail price, lot size or property type. Then call submit_search_results."
+        )
+
+    specific = [
+        f"Search {region_label} for listings that match the buyer's criteria (above). "
         f"This area is searched for anchor {region_anchor}.",
         where,
-        "Buyer's criteria:\n" + criteria_block(c),
     ]
     if fetch_budget:
-        parts.append(
+        specific.append(
             f"Page budget: you can open about {fetch_budget} pages for this county, results "
             "pages included, so spend them where they matter. Read results pages first and "
             "judge listings from their cards (price, lot size, type, status, location). Open a "
@@ -185,32 +218,19 @@ def search_prompt(
             'condition unverified and condition_notes "not opened yet", instead of dropping them.'
         )
     if tracked:
-        parts.append(
+        specific.append(
             "Already tracked; don't open these or report them as new listings. When one of them "
             "appears on a results page you're reading, add it to seen_tracked with its ref and "
             "the price and status shown there (and its URL on that site and MLS number, if "
             "shown). Don't go looking for them; just note the ones you come across:\n"
             + "\n".join(_tracked_row(t) for t in tracked)
         )
-    if excluded:
-        parts.append(
-            "Ruled out by the buyer; never report these:\n" + "\n".join(f"- {e}" for e in excluded)
-        )
     if rejected:
-        parts.append(
-            "You rejected these before; skip them unless the price shown now is lower than "
-            "listed here:\n" + "\n".join(f"- {r}" for r in rejected)
+        specific.append(
+            "Rejected before; skip these unless the price shown now is lower than listed here:\n"
+            + "\n".join(f"- {r}" for r in rejected)
         )
-    parts.append(
-        "For every other listing that matches the price/lot/type filters, read its listing "
-        "page's description (within the page budget) and label its condition. Report every "
-        "candidate: the matches, and the ones you reject (condition reject, with a one-sentence "
-        'reject_reason addressed to the buyer naming the rule it failed, e.g. "Listing says '
-        'it needs a new roof and foundation work; you asked for cosmetic updates only."). '
-        "The buyer reviews rejections, so be specific. Don't report listings the results page "
-        "already shows fail price, lot size or property type. Then call submit_search_results."
-    )
-    return "\n\n".join(parts)
+    return "\n\n".join(shared), "\n\n".join(specific)
 
 
 def status_prompt(c: Criteria, items: list[dict]) -> str:

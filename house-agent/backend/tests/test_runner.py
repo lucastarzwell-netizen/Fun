@@ -49,6 +49,11 @@ def _run(session, profile, agent):
     return execute_run(session, create_run(session, profile, "manual").id, agent)
 
 
+def _call(agent, label):
+    """The agent's search call for one county (counties aren't searched in list order)."""
+    return next(c for c in agent.search_calls if c["label"] == label)
+
+
 def _listing(session, profile, address):
     return session.scalar(
         select(Listing).where(Listing.profile_id == profile.id, Listing.address == address)
@@ -421,8 +426,8 @@ def test_each_run_leads_with_a_site_the_county_did_not_use_last_time(session):
         }
     )
     run = _run(session, profile, first)
-    assert [k for k, _ in first.search_calls[0]["plan"]][0] != [
-        k for k, _ in first.search_calls[1]["plan"]
+    assert [k for k, _ in _call(first, lenawee)["plan"]][0] != [
+        k for k, _ in _call(first, "Monroe County, MI")["plan"]
     ][0]
     assert run.summary["site_status"][lenawee] == {"used": ["realtor"], "blocked": ["zillow"]}
     assert run.summary["sites"]["realtor"] == {"used": 1, "blocked": 0}
@@ -433,14 +438,14 @@ def test_each_run_leads_with_a_site_the_county_did_not_use_last_time(session):
         regions={lenawee: {"region_checked": True, "listings": [], "sites_used": ["redfin"]}}
     )
     _run(session, profile, second)
-    order = [k for k, _ in second.search_calls[0]["plan"]]
+    order = [k for k, _ in _call(second, lenawee)["plan"]]
     assert order[0] in {"redfin", "homes"}
     assert order[-2:] == ["realtor", "zillow"]
 
     # The run after that leads with the one site this county hasn't led with yet.
     third = FakeAgent()
     _run(session, profile, third)
-    order = [k for k, _ in third.search_calls[0]["plan"]]
+    order = [k for k, _ in _call(third, lenawee)["plan"]]
     assert order[0] != "redfin" and order[-1] == "redfin"
 
 

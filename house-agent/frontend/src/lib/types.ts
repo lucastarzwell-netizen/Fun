@@ -154,9 +154,26 @@ export interface RunSummary {
   usage?: Usage;
   region_stats?: Record<
     string,
-    { added: number; reported: number; seen_tracked: number; fetch_budget: number; usage?: Usage }
+    {
+      added: number;
+      reported: number;
+      seen_tracked: number;
+      fetch_budget: number;
+      tier?: "full" | "sweep";
+      why?: string;
+      model?: string;
+      missed_by_sweeps?: string[];
+      usage?: Usage;
+    }
   >;
-  checks?: { seen_in_search: number; status_checked: number; skipped_recent: number; reread: number };
+  checks?: {
+    seen_in_search: number;
+    status_checked: number;
+    skipped_recent: number;
+    reread: number;
+    new_read?: number;
+  };
+  sweep_misses?: { listing: string; county: string; days_on_market: number }[];
   sites?: Record<string, { used: number; blocked: number }>;
   active_count?: number;
   imported_from?: string;

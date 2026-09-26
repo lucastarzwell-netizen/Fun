@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import zlib
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -28,7 +29,14 @@ from ..models import (
     SearchProfile,
 )
 from ..notify import email_run_summary
-from ..reconcile import RunChanges, apply_check, apply_found, apply_sighting, excluded_keys
+from ..reconcile import (
+    RunChanges,
+    _label,
+    apply_check,
+    apply_found,
+    apply_sighting,
+    excluded_keys,
+)
 from ..schemas import Criteria
 from .claude_agent import AgentError, ClaudeSearchAgent, SearchAgent
 from .sources import site_plan, sites_for
@@ -163,6 +171,45 @@ def quiet_regions(session: Session, profile_id: int, current_run_id: int) -> set
     }
 
 
+def county_history(session: Session, profile_id: int, current_run_id: int) -> dict[str, dict]:
+    """Per county: whether it has had a full search, and when it was last swept.
+
+    Counties in runs from before search tiers were recorded count as fully searched.
+    """
+    history: dict[str, dict] = {}
+    for run in session.scalars(
+        select(Run)
+        .where(
+            Run.profile_id == profile_id,
+            Run.id != current_run_id,
+            Run.status.in_(["succeeded", "partial", "cancelled"]),
+        )
+        .order_by(Run.id.desc())
+        .limit(60)
+    ):
+        when = run.started_at or run.created_at
+        for label, stats in ((run.summary or {}).get("region_stats") or {}).items():
+            h = history.setdefault(label, {"full": False, "last_sweep": None})
+            if stats.get("tier", "full") == "full":
+                h["full"] = True
+            elif h["last_sweep"] is None:
+                h["last_sweep"] = when  # newest first, so the first one seen is the latest
+    return history
+
+
+def county_tier(label: str, history: dict[str, dict], run_number: int) -> tuple[str, str]:
+    """("full" | "sweep", why). A county's first search and a rotating check every
+    `audit_every_runs` runs are full searches with the main model; the rest are sweeps."""
+    if settings.sweep_model == settings.model:
+        return "full", ""
+    if not history.get(label, {}).get("full"):
+        return "full", "first search"
+    n = settings.audit_every_runs
+    if n > 0 and (zlib.crc32(label.encode()) + run_number) % n == 0:
+        return "full", "rotating check"
+    return "sweep", ""
+
+
 def _item(listing: Listing, ref: int, links: LinkPolicy) -> dict:
     return {
         "ref": ref,
@@ -229,13 +276,24 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
     history: dict = (previous.summary or {}).get("site_status", {}) if previous else {}
     run_number = session.query(Run).filter(Run.profile_id == profile.id).count()
     quiet = quiet_regions(session, profile.id, run.id)
+    counties = county_history(session, profile.id, run.id)
     site_status: dict[str, dict[str, list[str]]] = {}
     site_tally: dict[str, dict[str, int]] = {}
     region_stats: dict[str, dict] = {}
+    sweep_new: list[Listing] = []  # found by sweeps; the main model reads them at the end
+    sweep_misses: list[dict] = []
+    # Full searches first, then sweeps, each grouped by page budget: counties searched the
+    # same way share a cached prompt prefix, and the cache only lasts a few minutes.
+    order = []
     for region_index, region in enumerate(criteria.regions):
+        label = f"{region.name}, {region.state}"
+        mode, why = county_tier(label, counties, run_number)
+        budget = settings.quiet_search_fetches if label in quiet else settings.search_fetches
+        order.append((mode != "full", -budget, region_index, region, label, mode, why))
+    order.sort(key=lambda o: o[:3])
+    for done, (_, _, region_index, region, label, mode, why) in enumerate(order):
         if stop_requested(run.id):
             break
-        label = f"{region.name}, {region.state}"
         # Only this county's state and anchor, to keep the prompt short.
         tracked = list(
             session.scalars(
@@ -270,10 +328,12 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             blocked_last_time=set(last.get("blocked", [])),
         )
         budget = settings.quiet_search_fetches if label in quiet else settings.search_fetches
-        logline(
-            f"Searching {label}" + (" (quiet county, smaller budget)" if label in quiet else "")
-        )
-        _progress(session, run, "search", region_index, len(criteria.regions), label)
+        model = settings.model if mode == "full" else settings.sweep_model
+        notes = [f"{mode} search" + (f", {why}" if why else "")]
+        if label in quiet:
+            notes.append("quiet county, smaller budget")
+        logline(f"Searching {label} ({'; '.join(notes)})")
+        _progress(session, run, "search", done, len(order), label)
         before_usage = agent.usage.snapshot()
         steps += 1
         try:
@@ -286,6 +346,7 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
                 excluded_labels,
                 rejected,
                 fetch_budget=budget,
+                mode=mode,
             )
         except AgentError as e:
             errors.append(f"{label}: {e}")
@@ -320,6 +381,7 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
 
         added_before = len(changes.added)
         tracked_before = {t.id: (t.price, t.market_status) for t in tracked}
+        new_here: list[tuple[Listing, int | None]] = []
         for found in result.listings:
             if found.anchor is None:
                 found.anchor = region.anchor
@@ -328,12 +390,37 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
                 # A tracked listing reported again: confirmed like a sighting.
                 confirmed.add(listing.id)
                 note_change(listing, tracked_before[listing.id])
+            elif listing is not None and listing.first_seen_run_id == run.id:
+                new_here.append((listing, found.days_on_market))
         session.commit()
+        new_active = [(x, d) for x, d in new_here if x.listing_state == ACTIVE]
+        if mode == "sweep":
+            sweep_new.extend(x for x, _ in new_active if x.condition == UNVERIFIED)
+        misses: list[str] = []
+        last_sweep = counties.get(label, {}).get("last_sweep")
+        if why == "rotating check" and last_sweep is not None:
+            # A listing already on the market when this county was last swept, which the
+            # sweep didn't report: what the cheaper sweeps miss.
+            swept_days_ago = (today - last_sweep.date()).days
+            for listing, days_on_market in new_here:
+                if days_on_market is not None and days_on_market > swept_days_ago:
+                    misses.append(_label(listing))
+                    sweep_misses.append(
+                        {
+                            "listing": _label(listing),
+                            "county": label,
+                            "days_on_market": days_on_market,
+                        }
+                    )
         region_stats[label] = {
+            "tier": mode,
+            "why": why,
+            "model": model,
             "added": len(changes.added) - added_before,
             "reported": len(result.listings),
             "seen_tracked": sightings,
             "fetch_budget": budget,
+            "missed_by_sweeps": misses,
             "usage": agent.usage.since(before_usage),
         }
         logline(
@@ -408,8 +495,8 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         session.commit()
         logline(f"Status-checked {min(start + batch, len(to_check))}/{len(to_check)}")
 
-    # 3. Re-read condition, with the main model, only where it may have changed: price or
-    # status changed this run, then listings whose condition couldn't be read yet.
+    # 3. Read condition with the main model: new listings the sweeps found, then listings whose
+    # price or status changed this run, then older ones whose condition couldn't be read yet.
     unverified = [
         listing.id
         for listing in session.scalars(
@@ -423,19 +510,26 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             .order_by(Listing.id)
         )
     ]
-    reread_ids = [*sorted(changed), *(i for i in unverified if i not in changed)]
+    new_ids = [x.id for x in sweep_new if x.listing_state == ACTIVE][
+        : max(0, settings.new_read_limit)
+    ]
+    other_ids = [
+        *(i for i in sorted(changed) if i not in new_ids),
+        *(i for i in unverified if i not in changed and i not in new_ids),
+    ][: max(0, settings.relabel_limit)]
     reread = [
         x
-        for x in (session.get(Listing, i) for i in reread_ids[: max(0, settings.relabel_limit)])
+        for x in (session.get(Listing, i) for i in [*new_ids, *other_ids])
         if x is not None and x.listing_state == ACTIVE
     ]
     if reread and not stop_requested(run.id):
-        logline(f"Re-reading {len(reread)} listings for condition")
+        logline(f"Reading {len(reread)} listings for condition ({len(new_ids)} new from sweeps)")
+    rejected_before = len(changes.rejected)
     batch = max(1, settings.check_batch_size)
     for start in range(0, len(reread), batch):
         if stop_requested(run.id):
             break
-        _progress(session, run, "reread", start, len(reread), "Re-reading changed listings")
+        _progress(session, run, "reread", start, len(reread), "Reading new and changed listings")
         chunk = reread[start : start + batch]
         steps += 1
         try:
@@ -452,6 +546,9 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             if check is not None:
                 apply_check(session, listing, check, run.id, today, changes, links)
         session.commit()
+    # New finds the main model rejected on reading aren't "new listings" after all.
+    turned_down = {r["listing"] for r in changes.rejected[rejected_before:]}
+    changes.added = [a for a in changes.added if a not in turned_down]
 
     run.summary = {
         **changes.as_dict(),
@@ -466,7 +563,9 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             "status_checked": len(to_check),
             "skipped_recent": skipped_recent,
             "reread": len(reread),
+            "new_read": len(new_ids),
         },
+        "sweep_misses": sweep_misses,
         "active_count": session.query(Listing)
         .filter(Listing.profile_id == profile.id, Listing.listing_state == ACTIVE)
         .count(),

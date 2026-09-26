@@ -51,6 +51,7 @@ class FakeAgent:
         excluded,
         rejected=None,
         fetch_budget=None,
+        mode="full",
     ):
         self.search_calls.append(
             {
@@ -60,6 +61,7 @@ class FakeAgent:
                 "excluded": excluded,
                 "rejected": rejected,
                 "fetch_budget": fetch_budget,
+                "mode": mode,
             }
         )
         result = self.regions.get(region_label, {"listings": [], "region_checked": True})
