@@ -179,6 +179,8 @@ export interface RunSummary {
     reread: number;
     new_read?: number;
   };
+  /** Quiet counties that sat this run out, with when each was last searched. */
+  dormant_skipped?: Record<string, string>;
   sites_skipped?: Record<string, { used: number; blocked: number }>;
   site_costs?: Record<string, SiteFetches & { est_cost_usd: number }>;
   sweep_misses?: { listing: string; county: string; days_on_market: number }[];

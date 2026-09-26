@@ -82,12 +82,13 @@ class Settings:
     quiet_search_fetches: int = field(default_factory=lambda: _int("HOUSE_AGENT_QUIET_FETCHES", 10))
     quiet_after_runs: int = field(default_factory=lambda: _int("HOUSE_AGENT_QUIET_AFTER", 3))
     # "Dormant" counties (nothing at all, no candidates, rejects or tracked listings seen, in
-    # each of their last `dormant_after_runs` searches) are searched at most once every
-    # `dormant_every_days` days: every other week on a weekly schedule. 0 = never skip.
-    # Off (0) until the skip rhythm is settled: every other run vs. the search's own schedule.
-    dormant_after_runs: int = field(default_factory=lambda: _int("HOUSE_AGENT_DORMANT_AFTER", 0))
-    dormant_every_days: int = field(
-        default_factory=lambda: _int("HOUSE_AGENT_DORMANT_EVERY_DAYS", 13)
+    # each of their last `dormant_after_runs` searches) sit out every other scheduled run:
+    # they're skipped if searched within `dormant_interval_factor` x the search's schedule
+    # interval (weekly -> ~10 days, every 2 weeks -> 3 weeks, monthly -> ~45 days). Searches
+    # without a schedule skip them on every other run. 0 = never skip.
+    dormant_after_runs: int = field(default_factory=lambda: _int("HOUSE_AGENT_DORMANT_AFTER", 3))
+    dormant_interval_factor: float = field(
+        default_factory=lambda: float(os.environ.get("HOUSE_AGENT_DORMANT_FACTOR", "1.5"))
     )
     search_web_searches: int = field(
         default_factory=lambda: _int("HOUSE_AGENT_SEARCH_WEB_SEARCHES", 10)

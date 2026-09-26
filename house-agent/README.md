@@ -143,6 +143,7 @@ the service and run `house-agent import <file>` with your seed file.
 | `HOUSE_AGENT_SWEEP_EFFORT` | `low` | Effort for sweeps |
 | `HOUSE_AGENT_SWEEP_FETCHES` | `10` | Pages a sweep may open per county |
 | `HOUSE_AGENT_SWEEP_SITES` / `HOUSE_AGENT_FULL_SITES` | `2` / `3` | Most sites (that load) a sweep / full county search uses before stopping, even when results are few |
+| `HOUSE_AGENT_DORMANT_AFTER` / `HOUSE_AGENT_DORMANT_FACTOR` | `3` / `1.5` | A county whose last 3 searches found nothing at all (no candidates, rejects or tracked listings) sits out every other scheduled run: it's skipped if searched within 1.5x the search's schedule interval (weekly: ~10 days, every 2 weeks: 3 weeks, monthly: ~45 days). Unscheduled searches skip it on alternate runs. `0` turns this off |
 | `HOUSE_AGENT_LEAD_SITE` | `redfin` | Site every county search starts with; after it, sites go cheapest first by measured page size (a site with pages over twice the cheapest's goes after the rest), and a site that blocked that county last time goes last. Empty = no fixed lead |
 | `HOUSE_AGENT_BLOCKED_MIN_TRIES` / `_BLOCKED_SHARE` / `_BLOCKED_RETRY_EVERY` | `4` / `0.8` / `4` | A site that blocked the agent in 80%+ of at least 4 recent county searches is skipped, except on every 4th run |
 | `HOUSE_AGENT_AUDIT_EVERY` | `4` | Each county gets a full search every this many runs, staggered (`0` = never) |

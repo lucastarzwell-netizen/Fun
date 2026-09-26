@@ -7,6 +7,8 @@ os.environ["HOUSE_AGENT_DATABASE_URL"] = f"sqlite:///{Path(_tmp) / 'test.db'}"
 os.environ["HOUSE_AGENT_SCHEDULER"] = "0"
 # Re-check tracked listings on every run (tests run several runs on one day).
 os.environ["HOUSE_AGENT_RECHECK_DAYS"] = "0"
+# Tests run many runs in minutes; quiet-county skipping has its own tests.
+os.environ["HOUSE_AGENT_DORMANT_AFTER"] = "0"
 
 import pytest  # noqa: E402
 

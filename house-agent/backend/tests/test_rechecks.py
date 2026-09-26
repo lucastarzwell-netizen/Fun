@@ -406,3 +406,73 @@ def test_run_summary_splits_county_cost_by_site_text():
     costs = _site_costs(stats)
     assert costs["zillow"] == {"pages": 3, "chars": 30000, "errors": 0, "est_cost_usd": 0.75}
     assert costs["redfin"] == {"pages": 6, "chars": 18000, "errors": 1, "est_cost_usd": 0.75}
+
+
+# ---- quiet ("dormant") counties -------------------------------------------------------
+
+from datetime import UTC, datetime  # noqa: E402
+
+from house_agent.agent.runner import dormant_skip, schedule_interval  # noqa: E402
+from house_agent.models import SearchProfile  # noqa: E402
+
+NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
+
+
+def _history(days_ago, recent=(0, 0, 0)):
+    return {"X": {"last_searched": NOW - timedelta(days=days_ago), "recent": list(recent)}}
+
+
+def test_dormant_counties_sit_out_every_other_scheduled_run(monkeypatch):
+    _settings(monkeypatch, dormant_after_runs=3, dormant_interval_factor=1.5)
+    week = timedelta(days=7)
+    # Weekly: searched last week -> skip; two weeks ago -> search.
+    assert dormant_skip("X", _history(7), NOW, week, True) is not None
+    assert dormant_skip("X", _history(14), NOW, week, False) is None
+    # Monthly: searched a month ago -> skip; two months ago -> search.
+    month = timedelta(days=30)
+    assert dormant_skip("X", _history(30), NOW, month, True) is not None
+    assert dormant_skip("X", _history(61), NOW, month, False) is None
+    # No schedule: alternate runs.
+    assert dormant_skip("X", _history(0), NOW, None, True) is not None
+    assert dormant_skip("X", _history(0), NOW, None, False) is None
+    # Anything found in the last 3 searches (or fewer than 3 searches) keeps it every run.
+    assert dormant_skip("X", _history(7, (0, 1, 0)), NOW, week, True) is None
+    assert dormant_skip("X", _history(7, (0, 0)), NOW, week, True) is None
+
+
+def test_schedule_interval_follows_the_search_schedule():
+    def profile(cron, every="week", enabled=True):
+        return SearchProfile(
+            name="x",
+            criteria={},
+            schedule_cron=cron,
+            schedule_every=every,
+            # Saving an every-two-weeks schedule always sets its first run date.
+            schedule_anchor=date(2026, 10, 2) if every == "2weeks" else None,
+            timezone="America/New_York",
+            enabled=enabled,
+        )
+
+    assert schedule_interval(profile("0 7 * * 5"), NOW) == timedelta(days=7)
+    assert schedule_interval(profile("0 7 * * *"), NOW) == timedelta(days=1)
+    assert schedule_interval(profile("0 7 * * 5", "2weeks"), NOW) == timedelta(days=14)
+    assert (
+        timedelta(days=28)
+        <= schedule_interval(profile("0 7 15 * *", "month"), NOW)
+        <= timedelta(days=31)
+    )
+    assert schedule_interval(profile(""), NOW) is None
+    assert schedule_interval(profile("0 7 * * 5", enabled=False), NOW) is None
+
+
+def test_quiet_counties_are_skipped_in_a_run(session, monkeypatch):
+    _settings(monkeypatch, dormant_after_runs=2, dormant_interval_factor=1.5)
+    profile = _profile(session)  # weekly schedule
+    _run(session, profile, FakeAgent())
+    busy = {LENAWEE: {"region_checked": True, "listings": [_found("1 Farm Rd")]}}
+    _run(session, profile, FakeAgent(regions=busy))
+    # Monroe found nothing twice and was searched minutes ago: it sits this run out.
+    agent = FakeAgent()
+    run = _run(session, profile, agent)
+    assert [c["label"] for c in agent.search_calls] == [LENAWEE]
+    assert list(run.summary["dormant_skipped"]) == ["Monroe County, MI"]

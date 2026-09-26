@@ -207,22 +207,50 @@ def county_history(session: Session, profile_id: int, current_run_id: int) -> di
     return history
 
 
-def dormant_skip(label: str, history: dict[str, dict], now: datetime) -> datetime | None:
+def schedule_interval(profile: SearchProfile, now: datetime) -> timedelta | None:
+    """Time between this search's scheduled runs (from its trigger), or None if it only runs
+    when started by hand."""
+    from ..scheduler import trigger_for  # the scheduler imports this module
+
+    try:
+        trigger = trigger_for(profile)
+    except ValueError:
+        return None
+    if trigger is None:
+        return None
+    first = trigger.get_next_fire_time(None, now)
+    if first is None:
+        return None
+    second = trigger.get_next_fire_time(first, first + timedelta(seconds=1))
+    return (second - first) if second else None
+
+
+def dormant_skip(
+    label: str,
+    history: dict[str, dict],
+    now: datetime,
+    interval: timedelta | None,
+    searched_last_run: bool,
+) -> datetime | None:
     """If this county should sit this run out, when it was last searched; else None.
 
-    A county whose last few searches turned up nothing at all is searched every other week
-    (at most once per `dormant_every_days`). Anything found there makes it weekly again.
+    A county whose last few searches turned up nothing at all is searched every other
+    scheduled run: skipped when it was searched within 1.5 schedule intervals (so a weekly
+    search covers it every other week, a monthly one every other month). A search with no
+    schedule skips it on alternate runs. Anything found there brings it back every run.
     """
-    needed, every = settings.dormant_after_runs, settings.dormant_every_days
+    needed = settings.dormant_after_runs
     h = history.get(label)
-    if needed <= 0 or every <= 0 or h is None or h["last_searched"] is None:
+    if needed <= 0 or h is None or h["last_searched"] is None:
         return None
     if len(h["recent"]) < needed or any(h["recent"][:needed]):
         return None
     last = h["last_searched"]
     if last.tzinfo is None:
         last = last.replace(tzinfo=UTC)
-    return last if now - last < timedelta(days=every) else None
+    if interval is None:
+        return last if searched_last_run else None
+    return last if now - last < interval * settings.dormant_interval_factor else None
 
 
 def county_tier(label: str, history: dict[str, dict], run_number: int) -> tuple[str, str]:
@@ -336,9 +364,13 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
     # same way share a cached prompt prefix, and the cache only lasts a few minutes.
     order = []
     dormant_skipped: dict[str, str] = {}
+    interval = schedule_interval(profile, _now())
+    searched_last_run = set(
+        ((previous.summary or {}) if previous else {}).get("region_stats") or {}
+    )
     for region_index, region in enumerate(criteria.regions):
         label = f"{region.name}, {region.state}"
-        last = dormant_skip(label, counties, _now())
+        last = dormant_skip(label, counties, _now(), interval, label in searched_last_run)
         if last is not None:
             dormant_skipped[label] = last.isoformat()
             continue
@@ -351,7 +383,7 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
     if dormant_skipped:
         logline(
             f"Skipping {len(dormant_skipped)} quiet counties this run (nothing found in their "
-            f"last {settings.dormant_after_runs} searches; searched every other week): "
+            f"last {settings.dormant_after_runs} searches; searched every other scheduled run): "
             + ", ".join(dormant_skipped)
         )
 

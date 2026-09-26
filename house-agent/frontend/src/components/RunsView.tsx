@@ -117,6 +117,12 @@ function RunDetail({ id }: { id: number }) {
       />
       <Section title="Skipped (excluded)" items={s.skipped_excluded} />
       <Section
+        title="Quiet counties skipped this run"
+        items={Object.entries(s.dormant_skipped ?? {}).map(
+          ([county, last]) => `${county} (nothing found lately; last searched ${dateTime(last)})`,
+        )}
+      />
+      <Section
         title="Missed by earlier sweeps"
         items={s.sweep_misses?.map((m) => `${m.listing} (${m.county}; on the market ${m.days_on_market} days)`)}
         tone="amber"
