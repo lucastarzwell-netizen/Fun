@@ -235,8 +235,8 @@ def test_first_search_is_full_then_counties_are_swept(session, monkeypatch):
     assert run2.summary["region_stats"][LENAWEE]["model"] == "claude-sonnet-5"
 
 
-def test_same_model_for_sweeps_turns_tiers_off(session, monkeypatch):
-    _settings(monkeypatch, model="claude-opus-5", sweep_model="claude-opus-5")
+def test_sweeps_can_be_turned_off(session, monkeypatch):
+    _settings(monkeypatch, sweeps_enabled=False)
     profile = _profile(session)
     _run(session, profile, FakeAgent())
     agent = FakeAgent()
@@ -314,3 +314,95 @@ def test_full_searches_run_before_sweeps(session, monkeypatch):
         "Hillsdale County, MI",
         "full",
     )
+
+
+def test_sweeps_use_the_smaller_page_budget(session, monkeypatch):
+    _settings(monkeypatch, audit_every_runs=0, search_fetches=20, sweep_fetches=10)
+    profile = _profile(session)
+    _run(session, profile, FakeAgent())
+    agent = FakeAgent()
+    _run(session, profile, agent)
+    assert {(c["mode"], c["fetch_budget"]) for c in agent.search_calls} == {("sweep", 10)}
+
+
+def test_sites_that_nearly_always_block_are_skipped_with_retries(session, monkeypatch):
+    _settings(monkeypatch, blocked_min_tries=4, blocked_share=0.8, blocked_retry_every=4)
+    profile = _profile(session)
+    session.add(
+        Run(
+            profile_id=profile.id,
+            status="succeeded",
+            summary={
+                "sites": {
+                    "realtor": {"used": 0, "blocked": 10},
+                    "zillow": {"used": 9, "blocked": 3},
+                }
+            },
+        )
+    )
+    session.commit()
+    agent = FakeAgent()
+    run = _run(session, profile, agent)  # this profile's 2nd run: not a retry run
+    plan = [k for k, _ in agent.search_calls[0]["plan"]]
+    assert "realtor" not in plan and "zillow" in plan
+    assert run.summary["sites_skipped"] == {"realtor": {"used": 0, "blocked": 10}}
+
+    for _ in range(2):  # runs 3 and 4; run 4 retries every site
+        agent = FakeAgent()
+        run = _run(session, profile, agent)
+    assert "realtor" in [k for k, _ in agent.search_calls[0]["plan"]]
+    assert run.summary["sites_skipped"] == {}
+
+
+def test_page_opens_are_counted_by_site():
+    from types import SimpleNamespace as NS
+
+    from house_agent.agent.claude_agent import _record_fetches
+
+    usage = Usage()
+    ok = "https://www.zillow.com/homedetails/1"
+    blocked = "https://www.realtor.com/realestateandhomes-search/X"
+    content = [
+        NS(type="server_tool_use", name="web_fetch", id="a", input={"url": ok}),
+        NS(
+            type="web_fetch_tool_result",
+            tool_use_id="a",
+            content=NS(type="web_fetch_result", url=ok, content=NS(source=NS(data="x" * 4000))),
+        ),
+        NS(type="server_tool_use", name="web_fetch", id="b", input={"url": blocked}),
+        NS(
+            type="web_fetch_tool_result",
+            tool_use_id="b",
+            content=NS(type="web_fetch_tool_result_error", error_code="url_not_accessible"),
+        ),
+    ]
+    _record_fetches(usage, content)
+    assert usage.as_dict()["by_site"] == {
+        "realtor": {"pages": 1, "chars": 0, "errors": 1},
+        "zillow": {"pages": 1, "chars": 4000, "errors": 0},
+    }
+
+
+def test_run_summary_splits_county_cost_by_site_text():
+    from house_agent.agent.runner import _site_costs
+
+    stats = {
+        "A": {
+            "usage": {
+                "est_cost_usd": 1.0,
+                "by_site": {
+                    "zillow": {"pages": 3, "chars": 30000, "errors": 0},
+                    "redfin": {"pages": 2, "chars": 10000, "errors": 0},
+                },
+            }
+        },
+        "B": {
+            "usage": {
+                "est_cost_usd": 0.5,
+                "by_site": {"redfin": {"pages": 4, "chars": 8000, "errors": 1}},
+            }
+        },
+    }
+    costs = _site_costs(stats)
+    assert costs["zillow"] == {"pages": 3, "chars": 30000, "errors": 0, "est_cost_usd": 0.75}
+    assert costs["redfin"] == {"pages": 6, "chars": 18000, "errors": 1, "est_cost_usd": 0.75}

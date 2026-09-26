@@ -145,6 +145,7 @@ def site_plan(
     rotation: int,
     used_last_time: set[str] = frozenset(),
     blocked_last_time: set[str] = frozenset(),
+    skip: set[str] = frozenset(),
 ) -> list[tuple[str, str | None]]:
     """Ordered (site key, starting URL) pairs for one county.
 
@@ -156,6 +157,8 @@ def site_plan(
     keys = sites_for(criteria)
     if "land" not in criteria.property_types:
         keys = [k for k in keys if not SITES[k].land_only]
+    # Sites that nearly always block the agent are left out (unless that would leave none).
+    keys = [k for k in keys if k not in skip] or keys
     if not keys:
         return []
     shift = rotation % len(keys)

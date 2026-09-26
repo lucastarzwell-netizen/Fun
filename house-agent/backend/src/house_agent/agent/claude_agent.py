@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from ..config import settings
 from ..schemas import Criteria
 from . import prompts
+from .sources import site_for_url
 from .types import CheckResult, SearchResult, StatusCheckResult
 
 log = logging.getLogger(__name__)
@@ -91,7 +92,15 @@ class Usage:
     """Token and tool counts, per model (the check model and the search model differ)."""
 
     by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Per listing site: pages opened, characters of page text returned, failed fetches.
+    by_site: dict[str, dict[str, int]] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
+
+    def add_fetch(self, site: str, chars: int, failed: bool) -> None:
+        c = self.by_site.setdefault(site, {"pages": 0, "chars": 0, "errors": 0})
+        c["pages"] += 1
+        c["chars"] += chars
+        c["errors"] += int(failed)
 
     def add(self, usage: Any, model: str = "unknown") -> None:
         c = self.by_model.setdefault(model, dict.fromkeys(_COUNTERS, 0))
@@ -108,16 +117,24 @@ class Usage:
     def total(self, key: str) -> int:
         return sum(c.get(key, 0) for c in self.by_model.values())
 
-    def snapshot(self) -> dict[str, dict[str, int]]:
-        return {m: dict(c) for m, c in self.by_model.items()}
+    def snapshot(self) -> dict[str, dict]:
+        return {
+            "models": {m: dict(c) for m, c in self.by_model.items()},
+            "sites": {k: dict(c) for k, c in self.by_site.items()},
+        }
 
-    def since(self, snapshot: dict[str, dict[str, int]]) -> dict[str, Any]:
+    def since(self, snapshot: dict[str, dict]) -> dict[str, Any]:
         """Counts added after `snapshot`, in the same shape as as_dict()."""
         diff = Usage()
         for model, c in self.by_model.items():
-            before = snapshot.get(model, {})
+            before = snapshot["models"].get(model, {})
             diff.by_model[model] = {k: c.get(k, 0) - before.get(k, 0) for k in _COUNTERS}
         diff.by_model = {m: c for m, c in diff.by_model.items() if c["calls"]}
+        for site, c in self.by_site.items():
+            before = snapshot["sites"].get(site, {})
+            d = {k: c[k] - before.get(k, 0) for k in c}
+            if d["pages"]:
+                diff.by_site[site] = d
         return diff.as_dict()
 
     def as_dict(self) -> dict[str, Any]:
@@ -129,6 +146,7 @@ class Usage:
         }
         known = [v for v in costs.values() if v is not None]
         out["est_cost_usd"] = round(sum(known), 4) if known else None
+        out["by_site"] = {k: dict(c) for k, c in sorted(self.by_site.items())}
         return out
 
 
@@ -175,6 +193,28 @@ STATUS_TOOL = submit_tool(
     "Submit the status of every ref. Call once, when finished.",
     StatusCheckResult,
 )
+
+
+def _record_fetches(usage: Usage, content: list) -> None:
+    """Count each page the agent opened, by site: how much text came back, or that it failed.
+    Page text is what the model reads, so this shows which sites are expensive to search."""
+    urls = {
+        b.id: (b.input or {}).get("url", "")
+        for b in content
+        if getattr(b, "type", "") == "server_tool_use" and getattr(b, "name", "") == "web_fetch"
+    }
+    for block in content:
+        if getattr(block, "type", "") != "web_fetch_tool_result":
+            continue
+        result = block.content
+        if getattr(result, "type", "") == "web_fetch_result":
+            source = getattr(getattr(result, "content", None), "source", None)
+            data = getattr(source, "data", "")
+            usage.add_fetch(
+                site_for_url(result.url), len(data) if isinstance(data, str) else 0, False
+            )
+        else:
+            usage.add_fetch(site_for_url(urls.get(block.tool_use_id, "")), 0, True)
 
 
 def _supports_fallbacks(model: str) -> bool:
@@ -323,6 +363,7 @@ class ClaudeSearchAgent:
                 raise AgentError(f"Could not reach the Claude API: {e}") from e
 
             # Bill to the model that actually answered (a refusal fallback can switch it).
+            _record_fetches(self.usage, response.content)
             served = getattr(response, "model", None)
             self.usage.add(response.usage, served if isinstance(served, str) else model)
             if response.stop_reason == "refusal":

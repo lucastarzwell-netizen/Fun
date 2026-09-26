@@ -17,7 +17,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
-from ..links import LinkPolicy, live_sources, site_reliability
+from ..links import LinkPolicy, live_sources, site_reliability, site_tallies
 from ..models import (
     ACTIVE,
     REJECTED,
@@ -39,7 +39,7 @@ from ..reconcile import (
 )
 from ..schemas import Criteria
 from .claude_agent import AgentError, ClaudeSearchAgent, SearchAgent
-from .sources import site_plan, sites_for
+from .sources import site_name, site_plan, sites_for
 from .types import ListingCheck
 
 log = logging.getLogger(__name__)
@@ -200,7 +200,7 @@ def county_history(session: Session, profile_id: int, current_run_id: int) -> di
 def county_tier(label: str, history: dict[str, dict], run_number: int) -> tuple[str, str]:
     """("full" | "sweep", why). A county's first search and a rotating check every
     `audit_every_runs` runs are full searches with the main model; the rest are sweeps."""
-    if settings.sweep_model == settings.model:
+    if not settings.sweeps_enabled:
         return "full", ""
     if not history.get(label, {}).get("full"):
         return "full", "first search"
@@ -208,6 +208,28 @@ def county_tier(label: str, history: dict[str, dict], run_number: int) -> tuple[
     if n > 0 and (zlib.crc32(label.encode()) + run_number) % n == 0:
         return "full", "rotating check"
     return "sweep", ""
+
+
+def _site_costs(region_stats: dict[str, dict]) -> dict[str, dict]:
+    """Per site across the run: pages, page text, failed opens, and an estimated share of
+    the county searches' cost (each county's cost split by how much page text each site
+    returned). An estimate: the model also spends tokens on instructions and thinking."""
+    out: dict[str, dict] = {}
+    for stats in region_stats.values():
+        usage = stats.get("usage") or {}
+        sites = usage.get("by_site") or {}
+        total_chars = sum(s.get("chars", 0) for s in sites.values())
+        cost = usage.get("est_cost_usd") or 0
+        for site, s in sites.items():
+            o = out.setdefault(site, {"pages": 0, "chars": 0, "errors": 0, "est_cost_usd": 0.0})
+            o["pages"] += s.get("pages", 0)
+            o["chars"] += s.get("chars", 0)
+            o["errors"] += s.get("errors", 0)
+            if total_chars:
+                o["est_cost_usd"] += cost * s.get("chars", 0) / total_chars
+    for o in out.values():
+        o["est_cost_usd"] = round(o["est_cost_usd"], 4)
+    return out
 
 
 def _item(listing: Listing, ref: int, links: LinkPolicy) -> dict:
@@ -289,9 +311,36 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         label = f"{region.name}, {region.state}"
         mode, why = county_tier(label, counties, run_number)
         budget = settings.quiet_search_fetches if label in quiet else settings.search_fetches
+        if mode == "sweep":
+            budget = min(budget, settings.sweep_fetches)
         order.append((mode != "full", -budget, region_index, region, label, mode, why))
     order.sort(key=lambda o: o[:3])
-    for done, (_, _, region_index, region, label, mode, why) in enumerate(order):
+
+    # Sites that blocked the agent nearly every time lately are skipped, with a retry every
+    # few runs in case that changed.
+    tallies = site_tallies(session, profile.id)
+    n = settings.blocked_retry_every
+    retry = n > 0 and run_number % n == 0
+    skipped_sites = {
+        key: {"used": used, "blocked": blocked}
+        for key, (used, blocked) in tallies.items()
+        if not retry
+        and used + blocked >= settings.blocked_min_tries
+        and blocked / (used + blocked) >= settings.blocked_share
+    }
+    if skipped_sites:
+        logline(
+            "Skipping sites that nearly always block the agent: "
+            + ", ".join(
+                f"{site_name(k)} (blocked in {t['blocked']} of {t['used'] + t['blocked']} "
+                "recent counties)"
+                for k, t in sorted(skipped_sites.items())
+            )
+        )
+    elif retry and tallies:
+        logline("Retrying every listing site this run, including ones that often block.")
+
+    for done, (_, neg_budget, region_index, region, label, mode, why) in enumerate(order):
         if stop_requested(run.id):
             break
         # Only this county's state and anchor, to keep the prompt short.
@@ -326,8 +375,9 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             run_number + region_index,
             used_last_time=set(last.get("used", [])),
             blocked_last_time=set(last.get("blocked", [])),
+            skip=set(skipped_sites),
         )
-        budget = settings.quiet_search_fetches if label in quiet else settings.search_fetches
+        budget = -neg_budget
         model = settings.model if mode == "full" else settings.sweep_model
         notes = [f"{mode} search" + (f", {why}" if why else "")]
         if label in quiet:
@@ -566,6 +616,8 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             "new_read": len(new_ids),
         },
         "sweep_misses": sweep_misses,
+        "sites_skipped": skipped_sites,
+        "site_costs": _site_costs(region_stats),
         "active_count": session.query(Listing)
         .filter(Listing.profile_id == profile.id, Listing.listing_state == ACTIVE)
         .count(),

@@ -179,6 +179,8 @@ export interface RunSummary {
     reread: number;
     new_read?: number;
   };
+  sites_skipped?: Record<string, { used: number; blocked: number }>;
+  site_costs?: Record<string, SiteFetches & { est_cost_usd: number }>;
   sweep_misses?: { listing: string; county: string; days_on_market: number }[];
   sites?: Record<string, { used: number; blocked: number }>;
   active_count?: number;
@@ -200,10 +202,18 @@ export interface UsageCounts {
   web_fetches: number;
 }
 
+export interface SiteFetches {
+  pages: number;
+  chars: number;
+  errors: number;
+}
+
 export interface Usage extends UsageCounts {
   /** Estimated model-token cost in USD (web search/fetch fees not included). */
   est_cost_usd?: number | null;
   by_model?: Record<string, UsageCounts & { est_cost_usd: number | null }>;
+  /** Pages the agent opened per listing site, with the amount of page text returned. */
+  by_site?: Record<string, SiteFetches>;
 }
 
 export type RunStatus = "queued" | "running" | "succeeded" | "partial" | "failed" | "cancelled";

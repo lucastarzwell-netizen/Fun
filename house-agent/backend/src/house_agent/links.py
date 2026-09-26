@@ -49,11 +49,8 @@ class LinkPolicy:
         return (-score, -source.last_seen.toordinal(), order, source.id or 0)
 
 
-def site_reliability(session: Session, profile_id: int) -> dict[str, float]:
-    """Share of recent county searches where each site let the agent in.
-
-    Smoothed so a site with little history sits near 0.5 instead of 0 or 1.
-    """
+def site_tallies(session: Session, profile_id: int) -> dict[str, tuple[int, int]]:
+    """Per site over recent runs: (counties it was used for, counties it blocked the agent)."""
     used: dict[str, int] = {}
     blocked: dict[str, int] = {}
     runs = session.scalars(
@@ -66,9 +63,17 @@ def site_reliability(session: Session, profile_id: int) -> dict[str, float]:
         for key, tally in ((run.summary or {}).get("sites") or {}).items():
             used[key] = used.get(key, 0) + int(tally.get("used", 0))
             blocked[key] = blocked.get(key, 0) + int(tally.get("blocked", 0))
+    return {key: (used.get(key, 0), blocked.get(key, 0)) for key in set(used) | set(blocked)}
+
+
+def site_reliability(session: Session, profile_id: int) -> dict[str, float]:
+    """Share of recent county searches where each site let the agent in.
+
+    Smoothed so a site with little history sits near 0.5 instead of 0 or 1.
+    """
     return {
-        key: (used.get(key, 0) + 1) / (used.get(key, 0) + blocked.get(key, 0) + 2)
-        for key in set(used) | set(blocked)
+        key: (used + 1) / (used + blocked + 2)
+        for key, (used, blocked) in site_tallies(session, profile_id).items()
     }
 
 

@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { api } from "../lib/api";
 import { cx, dateTime, duration, money } from "../lib/format";
 import { SITES } from "../lib/wizard";
-import type { Run, RunSummary, Usage, UsageCounts } from "../lib/types";
+import type { Run, RunSummary, SiteFetches, Usage, UsageCounts } from "../lib/types";
 import { Badge, type Tone } from "./Badge";
 
 const SITE_NAMES: Record<string, string> = Object.fromEntries(SITES.map((x) => [x.key, x.name]));
@@ -127,6 +127,12 @@ function RunDetail({ id }: { id: number }) {
         <div>
           <h4 className="mb-1 font-medium">Listing sites</h4>
           <ul className="space-y-0.5 text-stone-600 dark:text-stone-400">
+            {Object.entries(s.sites_skipped ?? {}).map(([key, t]) => (
+              <li key={`skip-${key}`} className="text-stone-500">
+                <span className="font-medium">{SITE_NAMES[key] ?? key}</span>: skipped this run (blocked in {t.blocked} of{" "}
+                {t.used + t.blocked} recent counties; retried every few runs)
+              </li>
+            ))}
             {Object.entries(s.sites).map(([key, t]) => (
               <li key={key}>
                 <span className="font-medium text-stone-800 dark:text-stone-200">{SITE_NAMES[key] ?? key}</span>:{" "}
@@ -155,7 +161,7 @@ function RunDetail({ id }: { id: number }) {
           </p>
         </div>
       )}
-      {s.usage && <UsageSection usage={s.usage} regions={s.region_stats} />}
+      {s.usage && <UsageSection usage={s.usage} regions={s.region_stats} siteCosts={s.site_costs} />}
       {data.log && (
         <details className="md:col-span-2">
           <summary className="cursor-pointer font-medium">Log</summary>
@@ -183,9 +189,27 @@ function tokensK(u: UsageCounts) {
   return `${Math.round((u.input_tokens + u.output_tokens + (u.cache_read_tokens ?? 0)) / 1000)}k tokens`;
 }
 
-function UsageSection({ usage, regions }: { usage: Usage; regions?: RunSummary["region_stats"] }) {
+function sitesLine(bySite?: Record<string, SiteFetches>) {
+  return Object.entries(bySite ?? {})
+    .map(([k, f]) => `${SITE_NAMES[k] ?? k} ${f.pages}${f.errors ? ` (${f.errors} failed)` : ""}`)
+    .join(", ");
+}
+
+/** Characters of page text -> rough tokens (about 4 characters per token). */
+const kTokens = (chars: number) => `${Math.round(chars / 4000)}k`;
+
+function UsageSection({
+  usage,
+  regions,
+  siteCosts,
+}: {
+  usage: Usage;
+  regions?: RunSummary["region_stats"];
+  siteCosts?: RunSummary["site_costs"];
+}) {
   const models = Object.entries(usage.by_model ?? {});
   const counties = Object.entries(regions ?? {});
+  const sites = Object.entries(siteCosts ?? {}).sort((a, b) => b[1].est_cost_usd - a[1].est_cost_usd);
   return (
     <div className="min-w-0 md:col-span-2">
       <h4 className="mb-1 font-medium">
@@ -204,11 +228,46 @@ function UsageSection({ usage, regions }: { usage: Usage; regions?: RunSummary["
           ))}
         </ul>
       )}
+      {sites.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-stone-600 dark:text-stone-400">By site</summary>
+          <div className="mt-1 overflow-x-auto">
+            <table className="w-full min-w-[480px] text-left text-xs">
+              <thead className="text-stone-500">
+                <tr>
+                  <th className="py-1 pr-3 font-medium">Site</th>
+                  <th className="py-1 pr-3 font-medium">Pages</th>
+                  <th className="py-1 pr-3 font-medium">Failed</th>
+                  <th className="py-1 pr-3 font-medium">Avg page</th>
+                  <th className="py-1 font-medium">Est. cost</th>
+                </tr>
+              </thead>
+              <tbody className="text-stone-700 dark:text-stone-300">
+                {sites.map(([key, f]) => (
+                  <tr key={key} className="border-t border-stone-100 dark:border-stone-800">
+                    <td className="py-1 pr-3">{SITE_NAMES[key] ?? key}</td>
+                    <td className="py-1 pr-3 tabular-nums">{f.pages}</td>
+                    <td className="py-1 pr-3 tabular-nums">{f.errors}</td>
+                    <td className="py-1 pr-3 tabular-nums">
+                      {f.pages - f.errors > 0 ? `${kTokens(f.chars / (f.pages - f.errors))} tokens` : "—"}
+                    </td>
+                    <td className="py-1 tabular-nums">{usd(f.est_cost_usd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-1 text-xs text-stone-400">
+            Each county's cost split by how much page text each site returned; the rest of a search (instructions,
+            thinking) is shared out the same way.
+          </p>
+        </details>
+      )}
       {counties.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer text-stone-600 dark:text-stone-400">By county</summary>
           <div className="mt-1 overflow-x-auto">
-            <table className="w-full min-w-[480px] text-left text-xs">
+            <table className="w-full min-w-[640px] text-left text-xs">
               <thead className="text-stone-500">
                 <tr>
                   <th className="py-1 pr-3 font-medium">County</th>
@@ -216,6 +275,7 @@ function UsageSection({ usage, regions }: { usage: Usage; regions?: RunSummary["
                   <th className="py-1 pr-3 font-medium">New</th>
                   <th className="py-1 pr-3 font-medium">Tracked seen</th>
                   <th className="py-1 pr-3 font-medium">Pages (budget)</th>
+                  <th className="py-1 pr-3 font-medium">Sites (pages)</th>
                   <th className="py-1 font-medium">Cost</th>
                 </tr>
               </thead>
@@ -233,6 +293,7 @@ function UsageSection({ usage, regions }: { usage: Usage; regions?: RunSummary["
                     <td className="py-1 pr-3 tabular-nums">
                       {r.usage?.web_fetches ?? "?"} ({r.fetch_budget})
                     </td>
+                    <td className="py-1 pr-3">{sitesLine(r.usage?.by_site) || "—"}</td>
                     <td className="py-1 tabular-nums">{usd(r.usage?.est_cost_usd)}</td>
                   </tr>
                 ))}

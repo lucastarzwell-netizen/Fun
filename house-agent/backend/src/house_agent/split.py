@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .links import site_tallies
 from .models import AgentFeedback, ExcludedAddress, Listing, Run, SearchProfile
 from .naming import unique_name
 from .schemas import Criteria
@@ -112,6 +113,11 @@ def split_profile(
     # stats (for quiet-county budgets) and which sites they used or were blocked on.
     region_stats: dict[str, dict] = {}
     site_status: dict[str, dict] = {}
+    # Which sites let the agent in lately, so the new search skips the ones that block.
+    sites = {
+        key: {"used": used, "blocked": blocked}
+        for key, (used, blocked) in site_tallies(session, profile.id).items()
+    }
     for run in session.scalars(
         select(Run)
         .where(Run.profile_id == profile.id, Run.status.in_(["succeeded", "partial", "cancelled"]))
@@ -144,6 +150,7 @@ def split_profile(
                 .count(),
                 "region_stats": region_stats,
                 "site_status": site_status,
+                "sites": sites,
             },
         )
     )

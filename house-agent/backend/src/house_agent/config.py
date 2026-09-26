@@ -33,15 +33,30 @@ class Settings:
     check_effort: str = field(
         default_factory=lambda: os.environ.get("HOUSE_AGENT_CHECK_EFFORT", "low")
     )
-    # County searches after a county's first one ("sweeps"): mostly reading results pages and
-    # confirming tracked listings, so a cheaper model. New finds are then judged by `model`.
-    # Set HOUSE_AGENT_SWEEP_MODEL to the same model as HOUSE_AGENT_MODEL to search every
-    # county with it.
+    # County searches after a county's first one ("sweeps") work from results pages with a
+    # smaller page budget and lower effort; new finds are then judged by `model`. Measured on
+    # real runs, Opus at low effort was cheaper per page than Sonnet, so sweeps default to the
+    # main model. HOUSE_AGENT_SWEEPS=0 makes every county search a full one.
+    sweeps_enabled: bool = field(
+        default_factory=lambda: os.environ.get("HOUSE_AGENT_SWEEPS", "1") != "0"
+    )
     sweep_model: str = field(
-        default_factory=lambda: os.environ.get("HOUSE_AGENT_SWEEP_MODEL", "claude-sonnet-5")
+        default_factory=lambda: os.environ.get(
+            "HOUSE_AGENT_SWEEP_MODEL", os.environ.get("HOUSE_AGENT_MODEL", "claude-opus-5")
+        )
     )
     sweep_effort: str = field(
         default_factory=lambda: os.environ.get("HOUSE_AGENT_SWEEP_EFFORT", "low")
+    )
+    sweep_fetches: int = field(default_factory=lambda: _int("HOUSE_AGENT_SWEEP_FETCHES", 10))
+    # A site that blocked the agent in at least `blocked_share` of its last attempts (and at
+    # least `blocked_min_tries` of them) is skipped, except every `blocked_retry_every` runs.
+    blocked_min_tries: int = field(default_factory=lambda: _int("HOUSE_AGENT_BLOCKED_MIN_TRIES", 4))
+    blocked_share: float = field(
+        default_factory=lambda: float(os.environ.get("HOUSE_AGENT_BLOCKED_SHARE", "0.8"))
+    )
+    blocked_retry_every: int = field(
+        default_factory=lambda: _int("HOUSE_AGENT_BLOCKED_RETRY_EVERY", 4)
     )
     # Each county also gets a full search with `model` every this many runs (staggered, so
     # about 1/N of counties per run), which also measures what sweeps miss. 0 = never.
