@@ -46,6 +46,8 @@ const json = (body: unknown) => JSON.stringify(body);
 export interface AuthState {
   required: boolean;
   authenticated: boolean;
+  /** Read-only demo session. */
+  demo?: boolean;
 }
 
 export const api = {
@@ -58,6 +60,8 @@ export const api = {
   createProfile: (body: ProfileIn) =>
     request<Profile>("/api/profiles", { method: "POST", body: json(body) }),
   deleteProfile: (id: number) => request<void>(`/api/profiles/${id}`, { method: "DELETE" }),
+  splitProfile: (id: number, anchors: string[], name?: string) =>
+    request<Profile>(`/api/profiles/${id}/split`, { method: "POST", body: json({ anchors, name }) }),
   updateProfile: (id: number, body: ProfileIn) =>
     request<Profile>(`/api/profiles/${id}`, { method: "PUT", body: json(body) }),
   startRun: (id: number) => request<Run>(`/api/profiles/${id}/runs`, { method: "POST" }),

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDemo } from "../lib/demo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Car, CircleSlash, ExternalLink, Plus, Trees } from "lucide-react";
 import { api } from "../lib/api";
@@ -64,6 +65,7 @@ export function RejectedView({ profileId }: { profileId: number }) {
 }
 
 function RejectedCard({ listing: l, onInclude }: { listing: Listing; onInclude: () => void }) {
+  const demo = useDemo();
   return (
     <article className="card flex flex-col overflow-hidden">
       <div className="flex items-start justify-between gap-3 px-4 pt-4">
@@ -127,10 +129,12 @@ function RejectedCard({ listing: l, onInclude }: { listing: Listing; onInclude: 
             Listing
           </a>
         )}
-        <button onClick={onInclude} className="btn ml-auto px-2 py-1.5 text-pine-700 hover:bg-pine-50 dark:text-pine-300 dark:hover:bg-pine-900/40">
-          <Plus size={15} />
-          Include anyway
-        </button>
+        {!demo && (
+          <button onClick={onInclude} className="btn ml-auto px-2 py-1.5 text-pine-700 hover:bg-pine-50 dark:text-pine-300 dark:hover:bg-pine-900/40">
+            <Plus size={15} />
+            Include anyway
+          </button>
+        )}
       </div>
     </article>
   );

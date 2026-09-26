@@ -18,6 +18,8 @@ import {
 import { CheckList, MultiChips } from "./wizard/ui";
 import { EmailSettings } from "./EmailSettings";
 import { LocationsPanel } from "./LocationsPanel";
+import { SplitPanel } from "./SplitPanel";
+import { useDemo } from "../lib/demo";
 
 const EMPTY_LAND: LandPrefs = { uses: [], must_have: [], nice_to_have: [], zoning: [], avoid: [] };
 
@@ -43,6 +45,7 @@ const numOrNull = (v: string) => (v === "" ? null : Number(v));
 
 export function SettingsView({ profile }: { profile: Profile }) {
   const qc = useQueryClient();
+  const demo = useDemo();
   const [draft, setDraft] = useState<ProfileIn>(() => strip(profile));
   useEffect(() => setDraft(strip(profile)), [profile]);
 
@@ -80,12 +83,22 @@ export function SettingsView({ profile }: { profile: Profile }) {
         <div className="flex items-center gap-3">
           {save.isError && <span className="text-sm text-rose-600">{(save.error as Error).message}</span>}
           {save.isSuccess && !dirty && <span className="text-sm text-pine-600">Saved</span>}
-          <button className="btn-primary" disabled={!dirty || save.isPending}>
-            <Save size={16} /> Save changes
-          </button>
+          {!demo && (
+            <button className="btn-primary" disabled={!dirty || save.isPending}>
+              <Save size={16} /> Save changes
+            </button>
+          )}
         </div>
       </div>
 
+      {demo && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          Demo: you can see how this search is set up, but not change it.
+          {profile.email_hidden && " Email addresses are hidden."}
+        </p>
+      )}
+      {/* In a demo every control below is disabled (the server refuses changes anyway). */}
+      <fieldset disabled={demo} className="min-w-0 space-y-6">
       <Panel title="Basics">
         <Field label="Country" hint="Changing the country switches listing sites; review your locations and regions after.">
           <select className="input" value={c.country}
@@ -292,7 +305,9 @@ export function SettingsView({ profile }: { profile: Profile }) {
       />
 
       <FeedbackPanel profileId={profile.id} />
-      <DeletePanel profile={profile} />
+      </fieldset>
+      {!demo && <SplitPanel profile={profile} />}
+      {!demo && <DeletePanel profile={profile} />}
     </form>
   );
 }

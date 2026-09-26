@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useDemo } from "../lib/demo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, RotateCcw } from "lucide-react";
 import { api } from "../lib/api";
 import { shortDate } from "../lib/format";
 
 export function ExcludedView({ profileId }: { profileId: number }) {
+  const demo = useDemo();
   const qc = useQueryClient();
   const { data = [] } = useQuery({
     queryKey: ["excluded", profileId],
@@ -36,7 +38,7 @@ export function ExcludedView({ profileId }: { profileId: number }) {
         </p>
       </div>
 
-      <form
+      {!demo && <form
         className="card grid gap-2 p-3 sm:grid-cols-[2fr_1.2fr_4rem_1.5fr_auto]"
         onSubmit={(e) => {
           e.preventDefault();
@@ -54,7 +56,7 @@ export function ExcludedView({ profileId }: { profileId: number }) {
         <button className="btn-primary" disabled={add.isPending}>
           <Plus size={16} /> Exclude
         </button>
-      </form>
+      </form>}
 
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[560px] text-sm">
@@ -76,9 +78,11 @@ export function ExcludedView({ profileId }: { profileId: number }) {
                 <td className="px-4 py-2 text-stone-600 dark:text-stone-400">{e.reason}</td>
                 <td className="px-4 py-2 text-stone-500">{shortDate(e.excluded_on)}</td>
                 <td className="px-4 py-2 text-right">
-                  <button className="btn-ghost px-2 py-1" onClick={() => restore.mutate(e.id)}>
-                    <RotateCcw size={14} /> Restore
-                  </button>
+                  {!demo && (
+                    <button className="btn-ghost px-2 py-1" onClick={() => restore.mutate(e.id)}>
+                      <RotateCcw size={14} /> Restore
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

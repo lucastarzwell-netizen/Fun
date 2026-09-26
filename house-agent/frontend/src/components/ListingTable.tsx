@@ -1,4 +1,5 @@
 import { ExternalLink, X } from "lucide-react";
+import { useDemo } from "../lib/demo";
 import { Badge } from "./Badge";
 import { cx, money, num, shortDate } from "../lib/format";
 import { statusLabel } from "../lib/listing";
@@ -13,6 +14,7 @@ export function ListingTable({
   onReviewed: (l: Listing, value: boolean) => void;
   onDismiss: (l: Listing) => void;
 }) {
+  const demo = useDemo();
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[960px] text-sm">
@@ -67,6 +69,7 @@ export function ListingTable({
                     type="checkbox"
                     className="size-4 accent-pine-600"
                     checked={l.reviewed}
+                    disabled={demo}
                     onChange={(e) => onReviewed(l, e.target.checked)}
                   />
                 </td>
@@ -77,9 +80,11 @@ export function ListingTable({
                         <ExternalLink size={15} />
                       </a>
                     )}
-                    <button onClick={() => onDismiss(l)} className="btn-ghost p-1.5 hover:text-rose-700" title="Dismiss">
-                      <X size={15} />
-                    </button>
+                    {!demo && (
+                      <button onClick={() => onDismiss(l)} className="btn-ghost p-1.5 hover:text-rose-700" title="Dismiss">
+                        <X size={15} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

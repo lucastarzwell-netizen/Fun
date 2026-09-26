@@ -128,6 +128,8 @@ class ProfileOut(ProfileIn):
     created_at: UTCDatetime
     updated_at: UTCDatetime
     next_run_at: UTCDatetime | None = None
+    # Demo sessions don't see email addresses.
+    email_hidden: bool = False
 
 
 # ---- listings ---------------------------------------------------------------------------

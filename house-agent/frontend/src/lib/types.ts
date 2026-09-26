@@ -62,6 +62,8 @@ export interface Profile extends ProfileIn {
   created_at: string;
   updated_at: string;
   next_run_at: string | null;
+  /** Demo sessions don't see email addresses. */
+  email_hidden?: boolean;
 }
 
 export type Condition = "good" | "needs_updating" | "unverified";
@@ -179,6 +181,8 @@ export interface RunSummary {
   imported_from?: string;
   email?: string;
   listings_imported?: number;
+  split_from?: string;
+  listings_moved?: number;
   excluded_imported?: number;
 }
 

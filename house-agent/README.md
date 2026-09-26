@@ -154,6 +154,7 @@ the service and run `house-agent import <file>` with your seed file.
 | `HOUSE_AGENT_SCHEDULER` | `1` | `0` turns off the in-process scheduler |
 | `HOUSE_AGENT_CORS_ORIGINS` | Vite dev origins | |
 | `HOUSE_AGENT_PASSWORD` | (unset: no sign-in) | Set on any public deployment |
+| `HOUSE_AGENT_DEMO_PASSWORD` | (unset: no demo) | A second password that signs in read-only: results, runs and settings are visible, but nothing can be changed or run, and email addresses are hidden |
 | `HOUSE_AGENT_SECRET` | derived from password | Key that signs session cookies |
 | `HOUSE_AGENT_SECURE_COOKIES` | `0` | `1` when served over HTTPS |
 | `HOUSE_AGENT_SMTP_USER` | (unset: no email) | Mail account the summaries are sent through |
@@ -162,6 +163,22 @@ the service and run `house-agent import <file>` with your seed file.
 | `HOUSE_AGENT_EMAIL_FROM` | the SMTP user | "From" address, e.g. an alias. Gmail requires it to be a verified "Send mail as" address |
 | `HOUSE_AGENT_EMAIL_NAME` | `House Agent` | Sender name recipients see |
 | `HOUSE_AGENT_PUBLIC_URL` | Render's URL | Link to the app in emails |
+
+## Splitting a search
+
+A search with several locations (e.g. three airports) can be split in **Search settings →
+Split this search**: move some locations into a new search, or make one search per location.
+Each location takes its counties and its listings (with their history) along; excluded
+addresses and "Include anyway" feedback are copied to both, and the counties keep their
+search history, so they carry on with sweeps rather than starting over.
+
+## Demo access
+
+Set `HOUSE_AGENT_DEMO_PASSWORD` to let someone look around without being able to change
+anything or run up API costs. The server refuses every change from a demo session (searches,
+county suggestions, test emails, settings, listing actions), and the app hides those controls
+and shows a "Demo · read-only" badge. Remove the variable to turn demo access off; that also
+signs out any demo sessions.
 
 ## Adding logins later
 

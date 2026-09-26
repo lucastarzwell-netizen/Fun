@@ -13,6 +13,7 @@ import { RunsView } from "./components/RunsView";
 import { SettingsView } from "./components/SettingsView";
 import { SetupWizard } from "./components/wizard/SetupWizard";
 import { LoginScreen } from "./components/LoginScreen";
+import { useDemo } from "./lib/demo";
 
 type Tab = "listings" | "rejected" | "excluded" | "runs" | "settings";
 
@@ -37,6 +38,7 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
   const [profileId, setProfileId] = useLocal<number | null>("profileId", null);
   const [theme, setTheme] = useTheme();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const demo = useDemo();
 
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: api.profiles });
   const profile = profiles.data?.find((p) => p.id === profileId) ?? profiles.data?.[0];
@@ -117,7 +119,17 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
               <Home size={18} />
             </div>
             <div className="min-w-0 leading-tight">
-              <div className="font-display text-lg font-semibold">House Agent</div>
+              <div className="flex items-center gap-2">
+                <span className="font-display text-lg font-semibold">House Agent</span>
+                {demo && (
+                  <span
+                    className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                    title="A read-only demo: look around; searches and changes are off."
+                  >
+                    Demo · read-only
+                  </span>
+                )}
+              </div>
               {profile && (
                 <div className="text-xs text-stone-500">
                   {lastRun ? `Last run ${dateTime(lastRun.finished_at ?? lastRun.created_at)}` : "Not run yet"}
@@ -141,7 +153,7 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
                 ))}
               </select>
             )}
-            <button
+            {!demo && <button
               className="btn-primary shrink-0"
               disabled={!profile || !!activeRun || start.isPending}
               onClick={() => start.mutate()}
@@ -153,14 +165,16 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
                   <span className="hidden sm:inline">Run search now</span>
                 </>
               )}
-            </button>
+            </button>}
           </div>
 
           <div className="order-2 flex shrink-0 items-center gap-1 sm:order-3">
-            <button className="btn-ghost p-2 sm:px-3.5" onClick={() => setWizardOpen(true)} title="Set up another search">
-              <Plus size={18} />
-              <span className="hidden sm:inline">New search</span>
-            </button>
+            {!demo && (
+              <button className="btn-ghost p-2 sm:px-3.5" onClick={() => setWizardOpen(true)} title="Set up another search">
+                <Plus size={18} />
+                <span className="hidden sm:inline">New search</span>
+              </button>
+            )}
             {signOut && (
               <button
                 className="btn-ghost p-2"
@@ -232,7 +246,7 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
           <RunBanner
             progress={activeRun.summary.progress}
             stopping={activeRun.stopping || stop.isPending}
-            onStop={() => stop.mutate(activeRun.id)}
+            onStop={demo ? undefined : () => stop.mutate(activeRun.id)}
           />
         )}
 
@@ -266,7 +280,7 @@ function RunBanner({
 }: {
   progress?: RunProgress;
   stopping: boolean;
-  onStop: () => void;
+  onStop?: () => void;
 }) {
   const pct = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
   const label = !progress
@@ -284,7 +298,7 @@ function RunBanner({
         <span className="ml-auto hidden text-xs opacity-80 md:inline">
           {stopping ? "Stopping after the current step…" : "New listings show up as each county finishes."}
         </span>
-        <button
+        {onStop && <button
           className="btn ml-auto shrink-0 border border-sky-300 bg-white px-2.5 py-1 text-xs text-sky-900 hover:bg-sky-100 md:ml-2 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100"
           disabled={stopping}
           onClick={() => {
@@ -292,7 +306,7 @@ function RunBanner({
           }}
         >
           <Square size={12} /> {stopping ? "Stopping…" : "Stop search"}
-        </button>
+        </button>}
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sky-200/70 dark:bg-sky-900">
         <div className="h-full rounded-full bg-sky-600 transition-all duration-500" style={{ width: `${pct}%` }} />

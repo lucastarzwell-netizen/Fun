@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..addresses import address_key
 from ..agent.runner import is_running, request_stop, stop_requested
 from ..agent.sources import site_name
-from ..auth import get_current_user
+from ..auth import get_current_user, is_demo
 from ..db import get_session
 from ..models import (
     ACTIVE,
@@ -247,6 +247,7 @@ def delete_excluded(
 @router.get("/profiles/{profile_id}/runs", response_model=list[RunOut])
 def list_runs(
     profile_id: int,
+    request: Request,
     limit: int = 20,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
@@ -255,12 +256,17 @@ def list_runs(
     runs = session.scalars(
         select(Run).where(Run.profile_id == profile_id).order_by(Run.id.desc()).limit(limit)
     ).all()
-    return [_run_out(r) for r in runs]
+    return [_run_out(r, demo=is_demo(request)) for r in runs]
 
 
-def _run_out(run: Run, cls=RunOut):
+def _run_out(run: Run, cls=RunOut, demo: bool = False):
     out = cls.model_validate(run)
     out.stopping = run.status in ("queued", "running") and stop_requested(run.id)
+    email = (out.summary or {}).get("email")
+    if demo and email:
+        # The outcome names the recipients (and mail errors can too).
+        sent = email.startswith("Summary emailed")
+        out.summary = {**out.summary, "email": "Summary emailed" if sent else "Email not sent"}
     return out
 
 
@@ -287,10 +293,11 @@ def stop_run(
 @router.get("/runs/{run_id}", response_model=RunDetailOut)
 def get_run(
     run_id: int,
+    request: Request,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    return _run_out(owned_run(session, user, run_id), RunDetailOut)
+    return _run_out(owned_run(session, user, run_id), RunDetailOut, is_demo(request))
 
 
 @router.get("/profiles/{profile_id}/stats", response_model=StatsOut)

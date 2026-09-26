@@ -71,6 +71,7 @@ export function RunsView({ profileId }: { profileId: number }) {
 function headline(run: Run) {
   const s = run.summary;
   if (run.trigger === "import") return `Imported ${s.listings_imported ?? 0} listings`;
+  if (run.trigger === "split") return `Split from "${s.split_from}" · ${s.listings_moved ?? 0} listings moved`;
   if (run.status === "running" || run.status === "queued") {
     if (run.stopping) return "Stopping…";
     const p = s.progress;

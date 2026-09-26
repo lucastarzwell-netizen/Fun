@@ -5,6 +5,7 @@ import { ListingHistory } from "./ListingHistory";
 import { cx, driveLabel, money, num, shortDate } from "../lib/format";
 import { statusLabel } from "../lib/listing";
 import type { Listing } from "../lib/types";
+import { useDemo } from "../lib/demo";
 
 export function ListingCard({
   listing: l,
@@ -16,6 +17,7 @@ export function ListingCard({
   onDismiss: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const demo = useDemo();
   const status = statusLabel(l);
   const cut = l.previous_price != null && l.price != null && l.price < l.previous_price;
   const raised = l.previous_price != null && l.price != null && l.price > l.previous_price;
@@ -102,7 +104,7 @@ export function ListingCard({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-0.5 border-t border-stone-100 px-1 py-2 sm:px-1.5 dark:border-stone-800">
-        <button
+        {!demo && <button
           onClick={() => onReviewed(!l.reviewed)}
           className={cx(
             "btn gap-1 px-1.5 py-1.5 text-[13px] sm:gap-2 sm:px-2 sm:text-sm",
@@ -121,7 +123,7 @@ export function ListingCard({
             {l.reviewed && <Check size={12} strokeWidth={3} />}
           </span>
           Reviewed
-        </button>
+        </button>}
         <button onClick={() => setOpen(!open)} className="btn-ghost gap-1 px-1.5 py-1.5 text-[13px] sm:gap-2 sm:px-2 sm:text-sm" title="History">
           <ChevronDown size={15} className={cx("transition", open && "rotate-180")} />
           History
@@ -132,14 +134,14 @@ export function ListingCard({
             Listing
           </a>
         )}
-        <button
+        {!demo && <button
           onClick={onDismiss}
           className="btn ml-auto gap-1 px-1.5 py-1.5 text-[13px] text-stone-500 sm:gap-2 sm:px-2 sm:text-sm hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-900/30"
           title="Dismiss this listing"
         >
           <X size={15} />
           Dismiss
-        </button>
+        </button>}
       </div>
     </article>
   );

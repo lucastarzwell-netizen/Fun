@@ -7,15 +7,15 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
 from .agent.runner import mark_interrupted_runs
 from .api import listings, profiles, wizard
-from .auth import ensure_default_user
+from .auth import ensure_default_user, is_demo
 from .auth import router as auth_router
 from .config import settings
 from .db import SessionLocal, init_db
@@ -56,6 +56,29 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="House Agent", lifespan=lifespan)
+
+
+# Methods that only read. Anything else changes data or starts paid work (searches, county
+# suggestions, test emails), which a demo session may not do.
+_READ_ONLY = {"GET", "HEAD", "OPTIONS"}
+_DEMO_ALLOWED = {"/api/auth/login", "/api/auth/logout"}
+
+
+@app.middleware("http")
+async def demo_is_read_only(request: Request, call_next):
+    if (
+        request.method not in _READ_ONLY
+        and request.url.path.startswith("/api/")
+        and request.url.path not in _DEMO_ALLOWED
+        and is_demo(request)
+    ):
+        return JSONResponse(
+            {"detail": "This is a read-only demo: it can't change anything or run searches."},
+            status_code=403,
+        )
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
