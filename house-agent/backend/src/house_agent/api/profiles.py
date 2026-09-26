@@ -43,10 +43,11 @@ def list_profiles(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    profiles = session.scalars(
-        select(SearchProfile).where(SearchProfile.owner_id == user.id).order_by(SearchProfile.id)
-    )
-    return [_out(p, is_demo(request)) for p in profiles]
+    demo = is_demo(request)
+    q = select(SearchProfile).where(SearchProfile.owner_id == user.id)
+    if demo:
+        q = q.where(SearchProfile.demo_visible.is_(True))
+    return [_out(p, demo) for p in session.scalars(q.order_by(SearchProfile.id))]
 
 
 @router.post("", response_model=ProfileOut, status_code=201)

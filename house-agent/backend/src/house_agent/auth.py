@@ -18,6 +18,7 @@ import hashlib
 import hmac
 import os
 import time
+from contextvars import ContextVar
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -88,6 +89,11 @@ def session_role(request: Request) -> str:
 
 def is_demo(request: Request) -> bool:
     return bool(_password()) and _role(request.cookies.get(COOKIE)) == DEMO
+
+
+# Set per request by main.py's middleware, so data-access helpers (api/deps.py) can limit a
+# demo session to the searches the owner chose to show without every route passing it along.
+demo_request: ContextVar[bool] = ContextVar("demo_request", default=False)
 
 
 def ensure_default_user(session: Session) -> User:

@@ -305,6 +305,21 @@ export function SettingsView({ profile }: { profile: Profile }) {
       />
 
       <FeedbackPanel profileId={profile.id} />
+      {!demo && (
+        <Panel
+          title="Demo access"
+          hint="Someone signed in with the demo password sees only the searches you show here, read-only, without email addresses."
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={draft.demo_visible ?? false}
+              onChange={(e) => setDraft({ ...draft, demo_visible: e.target.checked })}
+            />
+            Show this search in the demo
+          </label>
+        </Panel>
+      )}
       </fieldset>
       {!demo && <SplitPanel profile={profile} />}
       {!demo && <DeletePanel profile={profile} />}
@@ -415,6 +430,7 @@ function strip(p: Profile): ProfileIn {
     schedule_cron: p.schedule_cron,
     timezone: p.timezone,
     enabled: p.enabled,
+    demo_visible: p.demo_visible ?? false,
     notify: p.notify ?? { email_enabled: false, email_to: [], top_n: 5 },
   };
 }

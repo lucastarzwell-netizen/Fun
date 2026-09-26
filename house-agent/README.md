@@ -154,7 +154,7 @@ the service and run `house-agent import <file>` with your seed file.
 | `HOUSE_AGENT_SCHEDULER` | `1` | `0` turns off the in-process scheduler |
 | `HOUSE_AGENT_CORS_ORIGINS` | Vite dev origins | |
 | `HOUSE_AGENT_PASSWORD` | (unset: no sign-in) | Set on any public deployment |
-| `HOUSE_AGENT_DEMO_PASSWORD` | (unset: no demo) | A second password that signs in read-only: results, runs and settings are visible, but nothing can be changed or run, and email addresses are hidden |
+| `HOUSE_AGENT_DEMO_PASSWORD` | (unset: no demo) | A second password that signs in read-only to the searches marked "Show in demo": nothing can be changed or run, and email addresses are hidden |
 | `HOUSE_AGENT_SECRET` | derived from password | Key that signs session cookies |
 | `HOUSE_AGENT_SECURE_COOKIES` | `0` | `1` when served over HTTPS |
 | `HOUSE_AGENT_SMTP_USER` | (unset: no email) | Mail account the summaries are sent through |
@@ -179,6 +179,10 @@ anything or run up API costs. The server refuses every change from a demo sessio
 county suggestions, test emails, settings, listing actions), and the app hides those controls
 and shows a "Demo · read-only" badge. Remove the variable to turn demo access off; that also
 signs out any demo sessions.
+
+A demo session only sees the searches you choose: turn on **Search settings → Demo access →
+Show this search in the demo** for each one. Searches are hidden until you do (including new
+ones), and the server treats a hidden search as not found for demo sessions.
 
 ## Adding logins later
 

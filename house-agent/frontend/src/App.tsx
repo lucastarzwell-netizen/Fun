@@ -94,6 +94,25 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
   // Wait for the first load so a new account goes straight to setup without a flash.
   if (profiles.isLoading) return null;
 
+  // A demo session with no searches shared: nothing to show (and it can't create any).
+  if (demo && profiles.isSuccess && profiles.data.length === 0) {
+    return (
+      <div className="grid min-h-screen place-items-center p-6 text-center">
+        <div className="max-w-sm space-y-2">
+          <div className="font-display text-xl font-semibold">Nothing to show yet</div>
+          <p className="text-sm text-stone-500">
+            This demo doesn't include any searches yet. Check back later.
+          </p>
+          {signOut && (
+            <button className="btn-ghost" onClick={() => signOut().then(() => qc.invalidateQueries())}>
+              <LogOut size={16} /> Sign out
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // First visit (no searches yet) or "New search": the guided setup.
   if (wizardOpen || (profiles.isSuccess && profiles.data.length === 0)) {
     return (

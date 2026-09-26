@@ -64,9 +64,12 @@ def test_demo_password_is_read_only_and_hides_email(monkeypatch, session):
         name="Mine",
         criteria={},
         notify={"email_enabled": True, "email_to": ["me@example.com"], "top_n": 5},
+        demo_visible=True,
     )
-    session.add(profile)
+    hidden = SearchProfile(owner_id=user.id, name="Private", criteria={})
+    session.add_all([profile, hidden])
     session.flush()
+    session.add(Run(profile_id=hidden.id, status="succeeded", summary={}))
     session.add(
         Run(
             profile_id=profile.id,
@@ -81,9 +84,16 @@ def test_demo_password_is_read_only_and_hides_email(monkeypatch, session):
         assert r.status_code == 200 and r.json()["demo"] is True
         assert client.get("/api/auth/me").json()["demo"] is True
 
-        # Everything can be looked at...
+        # Only the searches the owner chose to show...
         profiles = client.get("/api/profiles").json()
-        assert profiles[0]["name"] == "Mine"
+        assert [p["name"] for p in profiles] == ["Mine"]
+        for path in (
+            f"/api/profiles/{hidden.id}",
+            f"/api/profiles/{hidden.id}/listings",
+            f"/api/profiles/{hidden.id}/runs",
+            f"/api/profiles/{hidden.id}/stats",
+        ):
+            assert client.get(path).status_code == 404, path
         # ...without the owner's email addresses.
         assert profiles[0]["notify"]["email_to"] == [] and profiles[0]["email_hidden"] is True
         runs = client.get(f"/api/profiles/{profile.id}/runs").json()
@@ -105,7 +115,9 @@ def test_demo_password_is_read_only_and_hides_email(monkeypatch, session):
         client.post("/api/auth/logout")
         client.post("/api/auth/login", json={"password": "owner-password"})
         assert client.get("/api/auth/me").json()["demo"] is False
-        assert client.get("/api/profiles").json()[0]["notify"]["email_to"] == ["me@example.com"]
+        owner_view = client.get("/api/profiles").json()
+        assert [p["name"] for p in owner_view] == ["Mine", "Private"]
+        assert owner_view[0]["notify"]["email_to"] == ["me@example.com"]
 
     # Turning demo access off ends demo sessions.
     monkeypatch.delenv("HOUSE_AGENT_DEMO_PASSWORD")

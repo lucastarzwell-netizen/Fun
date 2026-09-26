@@ -115,6 +115,8 @@ class ProfileIn(BaseModel):
     schedule_cron: str = "0 7 * * 5"
     timezone: str = "America/New_York"
     enabled: bool = True
+    # Shown to read-only demo sessions.
+    demo_visible: bool = False
     # Stored as NULL on searches created before email summaries existed.
     notify: Annotated[NotifySettings, BeforeValidator(lambda v: v or {})] = Field(
         default_factory=NotifySettings

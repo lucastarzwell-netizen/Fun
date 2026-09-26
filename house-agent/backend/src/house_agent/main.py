@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from . import scheduler
 from .agent.runner import mark_interrupted_runs
 from .api import listings, profiles, wizard
-from .auth import ensure_default_user, is_demo
+from .auth import demo_request, ensure_default_user, is_demo
 from .auth import router as auth_router
 from .config import settings
 from .db import SessionLocal, init_db
@@ -66,11 +66,13 @@ _DEMO_ALLOWED = {"/api/auth/login", "/api/auth/logout"}
 
 @app.middleware("http")
 async def demo_is_read_only(request: Request, call_next):
+    demo = is_demo(request)
+    demo_request.set(demo)
     if (
-        request.method not in _READ_ONLY
+        demo
+        and request.method not in _READ_ONLY
         and request.url.path.startswith("/api/")
         and request.url.path not in _DEMO_ALLOWED
-        and is_demo(request)
     ):
         return JSONResponse(
             {"detail": "This is a read-only demo: it can't change anything or run searches."},

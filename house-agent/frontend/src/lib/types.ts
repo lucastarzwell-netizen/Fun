@@ -54,6 +54,8 @@ export interface ProfileIn {
   schedule_cron: string;
   timezone: string;
   enabled: boolean;
+  /** Shown to read-only demo sessions. */
+  demo_visible?: boolean;
   notify: NotifySettings;
 }
 

@@ -65,6 +65,7 @@ def split_profile(
         schedule_cron=profile.schedule_cron,
         timezone=profile.timezone,
         enabled=profile.enabled,
+        demo_visible=profile.demo_visible,
         notify=profile.notify,
     )
     session.add(new)

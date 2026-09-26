@@ -37,7 +37,10 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 # Columns added after the first release. create_all() makes new tables but never alters
 # existing ones, so add these to databases created by older versions.
 _ADDED_COLUMNS = {
-    "search_profiles": {"notify": ("JSON",) * 2},
+    "search_profiles": {
+        "notify": ("JSON",) * 2,
+        "demo_visible": ("BOOLEAN NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    },
     "listings": {
         "reject_reason": ("TEXT", "TEXT"),
         "user_included": ("BOOLEAN NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE"),
