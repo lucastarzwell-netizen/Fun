@@ -63,6 +63,8 @@ def split_profile(
         ),
         criteria=part(moving),
         schedule_cron=profile.schedule_cron,
+        schedule_every=profile.schedule_every,
+        schedule_anchor=profile.schedule_anchor,
         timezone=profile.timezone,
         enabled=profile.enabled,
         demo_visible=profile.demo_visible,

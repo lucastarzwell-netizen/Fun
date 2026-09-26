@@ -52,6 +52,7 @@ export interface ProfileIn {
   name: string;
   criteria: Criteria;
   schedule_cron: string;
+  schedule_every?: import("./schedule").Every;
   timezone: string;
   enabled: boolean;
   /** Shown to read-only demo sessions. */
@@ -64,6 +65,7 @@ export interface Profile extends ProfileIn {
   created_at: string;
   updated_at: string;
   next_run_at: string | null;
+  schedule_anchor?: string | null;
   /** Demo sessions don't see email addresses. */
   email_hidden?: boolean;
 }

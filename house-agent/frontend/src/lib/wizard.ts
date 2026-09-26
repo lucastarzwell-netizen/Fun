@@ -1,3 +1,4 @@
+import { toCron, type Schedule } from "./schedule";
 // Turns the setup wizard's answers into a search profile.
 
 import type { Anchor, Country, Criteria, LandPrefs, ProfileIn, Region } from "./types";
@@ -152,7 +153,7 @@ export const DEAL_BREAKERS = [
 
 export type DealBreaker = (typeof DEAL_BREAKERS)[number]["key"];
 
-export type Frequency = "weekly" | "daily" | "manual";
+export type Frequency = "weekly" | "biweekly" | "monthly" | "daily" | "manual";
 
 export interface WizardAnswers {
   country: Country;
@@ -172,7 +173,8 @@ export interface WizardAnswers {
   includePending: boolean;
   notify: import("./types").NotifySettings;
   frequency: Frequency;
-  day: number;
+  day: number; // weekday 0-6 (Sunday = 0) for weekly / every two weeks
+  monthDay: number; // 1-31 for monthly
   time: string;
   timezone: string;
   name: string;
@@ -204,6 +206,7 @@ export function initialAnswers(): WizardAnswers {
     notify: { email_enabled: false, email_to: [], top_n: 5 },
     frequency: "weekly",
     day: 5,
+    monthDay: 1,
     time: "07:00",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
     name: "",
@@ -217,10 +220,24 @@ export function placeCode(name: string) {
   return code.toUpperCase().slice(0, 4) || "HOME";
 }
 
+export function scheduleFor(a: WizardAnswers): Schedule | null {
+  switch (a.frequency) {
+    case "manual":
+      return null;
+    case "daily":
+      return { every: "week", day: 7, time: a.time };
+    case "biweekly":
+      return { every: "2weeks", day: a.day, time: a.time };
+    case "monthly":
+      return { every: "month", day: a.monthDay, time: a.time };
+    default:
+      return { every: "week", day: a.day, time: a.time };
+  }
+}
+
 export function cronFor(a: WizardAnswers) {
-  if (a.frequency === "manual") return "";
-  const [h, m] = a.time.split(":").map(Number);
-  return `${m} ${h} * * ${a.frequency === "daily" ? "*" : a.day}`;
+  const s = scheduleFor(a);
+  return s ? toCron(s) : "";
 }
 
 export function defaultName(a: WizardAnswers) {
@@ -269,6 +286,7 @@ export function toProfile(a: WizardAnswers): ProfileIn {
     name: a.name.trim() || defaultName(a),
     criteria,
     schedule_cron: cronFor(a),
+    schedule_every: scheduleFor(a)?.every ?? "week",
     timezone: a.timezone,
     enabled: a.frequency !== "manual",
     notify: a.notify,

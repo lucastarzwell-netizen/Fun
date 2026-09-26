@@ -20,26 +20,18 @@ import { EmailSettings } from "./EmailSettings";
 import { LocationsPanel } from "./LocationsPanel";
 import { SplitPanel } from "./SplitPanel";
 import { useDemo } from "../lib/demo";
+import {
+  MONTH_DAYS,
+  WEEKDAYS,
+  ordinal,
+  parseSchedule,
+  toCron,
+  withEvery,
+  type Every,
+  type Schedule,
+} from "../lib/schedule";
 
 const EMPTY_LAND: LandPrefs = { uses: [], must_have: [], nice_to_have: [], zoning: [], avoid: [] };
-
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-/** "M H * * D" <-> {day, time}. Anything more complex is edited as raw cron. */
-// day 7 = every day ("*")
-function parseCron(cron: string): { day: number; time: string } | null {
-  const m = cron.trim().match(/^(\d{1,2}) (\d{1,2}) \* \* ([0-6]|\*)$/);
-  if (!m) return null;
-  return {
-    day: m[3] === "*" ? 7 : Number(m[3]),
-    time: `${m[2].padStart(2, "0")}:${m[1].padStart(2, "0")}`,
-  };
-}
-
-function toCron(day: number, time: string) {
-  const [h, m] = time.split(":").map(Number);
-  return `${m} ${h} * * ${day === 7 ? "*" : day}`;
-}
 
 const numOrNull = (v: string) => (v === "" ? null : Number(v));
 
@@ -60,10 +52,13 @@ export function SettingsView({ profile }: { profile: Profile }) {
   const setLand = (patch: Partial<LandPrefs>) => setC({ land: { ...land, ...patch } });
   const setRegion = (i: number, patch: Partial<Region>) =>
     setC({ regions: c.regions.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
-  const simple = parseCron(draft.schedule_cron);
+  const sched = parseSchedule(draft.schedule_cron, draft.schedule_every ?? "week");
+  const setSched = (next: Schedule) =>
+    setDraft({ ...draft, schedule_cron: toCron(next), schedule_every: next.every });
   // Profiles created with "Only when I ask" have no cron; give the toggle something to enable.
   useEffect(() => {
-    if (draft.enabled && !draft.schedule_cron.trim()) setDraft((d) => ({ ...d, schedule_cron: "0 7 * * 5" }));
+    if (draft.enabled && !draft.schedule_cron.trim())
+      setDraft((d) => ({ ...d, schedule_cron: "0 7 * * 5", schedule_every: "week" }));
   }, [draft.enabled, draft.schedule_cron]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(strip(profile));
 
@@ -198,25 +193,42 @@ export function SettingsView({ profile }: { profile: Profile }) {
             onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} />
           Run automatically
         </label>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {!draft.schedule_cron.trim() ? null : simple ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {!draft.schedule_cron.trim() ? null : sched ? (
             <>
-              <Field label="Day">
-                <select className="input" value={simple.day}
-                  onChange={(e) => setDraft({ ...draft, schedule_cron: toCron(Number(e.target.value), simple.time) })}>
-                  {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
-                  <option value={7}>Every day</option>
+              <Field label="How often">
+                <select className="input" value={sched.every}
+                  onChange={(e) => setSched(withEvery(sched, e.target.value as Every))}>
+                  <option value="week">Every week</option>
+                  <option value="2weeks">Every 2 weeks</option>
+                  <option value="month">Every month</option>
                 </select>
               </Field>
+              {sched.every === "month" ? (
+                <Field label="Day of the month" hint={sched.day > 28 ? "In shorter months it runs on the last day." : undefined}>
+                  <select className="input" value={sched.day}
+                    onChange={(e) => setSched({ ...sched, day: Number(e.target.value) })}>
+                    {MONTH_DAYS.map((d) => <option key={d} value={d}>{ordinal(d)}</option>)}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Day">
+                  <select className="input" value={sched.day}
+                    onChange={(e) => setSched({ ...sched, day: Number(e.target.value) })}>
+                    {WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                    {sched.every === "week" && <option value={7}>Every day</option>}
+                  </select>
+                </Field>
+              )}
               <Field label="Time">
-                <input type="time" className="input" value={simple.time}
-                  onChange={(e) => setDraft({ ...draft, schedule_cron: toCron(simple.day, e.target.value) })} />
+                <input type="time" className="input" value={sched.time}
+                  onChange={(e) => setSched({ ...sched, time: e.target.value })} />
               </Field>
             </>
           ) : (
             <Field label="Cron expression" hint="minute hour day month weekday">
               <input className="input font-mono" value={draft.schedule_cron}
-                onChange={(e) => setDraft({ ...draft, schedule_cron: e.target.value })} />
+                onChange={(e) => setDraft({ ...draft, schedule_cron: e.target.value, schedule_every: "week" })} />
             </Field>
           )}
           <Field label="Time zone">
@@ -428,6 +440,7 @@ function strip(p: Profile): ProfileIn {
     name: p.name,
     criteria: p.criteria,
     schedule_cron: p.schedule_cron,
+    schedule_every: p.schedule_every ?? "week",
     timezone: p.timezone,
     enabled: p.enabled,
     demo_visible: p.demo_visible ?? false,

@@ -302,3 +302,28 @@ def test_delete_search_removes_everything_and_refuses_while_running(tmp_path):
     with SessionLocal() as s:
         for model in (Listing, ExcludedAddress, Run, AgentFeedback):
             assert s.query(model).count() == 0, model.__name__
+
+
+def test_every_two_weeks_keeps_its_anchor_until_the_schedule_changes():
+    body = {
+        "name": "Fortnightly",
+        "criteria": {},
+        "schedule_cron": "0 7 * * 5",
+        "schedule_every": "2weeks",
+        "timezone": "America/New_York",
+    }
+    with TestClient(app) as client:
+        created = client.post("/api/profiles", json=body).json()
+        anchor = created["schedule_anchor"]
+        assert anchor is not None and created["next_run_at"] is not None
+        # Saving other settings keeps the same fortnights...
+        same = client.put(f"/api/profiles/{created['id']}", json={**body, "name": "Renamed"})
+        assert same.json()["schedule_anchor"] == anchor
+        # ...switching to monthly drops the anchor, and a bad monthly schedule is refused.
+        monthly = {**body, "schedule_cron": "0 7 31 * *", "schedule_every": "month"}
+        assert (
+            client.put(f"/api/profiles/{created['id']}", json=monthly).json()["schedule_anchor"]
+            is None
+        )
+        bad = {**body, "schedule_cron": "0 7 * * 5", "schedule_every": "month"}
+        assert client.put(f"/api/profiles/{created['id']}", json=bad).status_code == 422

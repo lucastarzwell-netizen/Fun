@@ -113,6 +113,8 @@ class ProfileIn(BaseModel):
     name: str
     criteria: Criteria
     schedule_cron: str = "0 7 * * 5"
+    # week | 2weeks | month (see models.SearchProfile)
+    schedule_every: Literal["week", "2weeks", "month"] = "week"
     timezone: str = "America/New_York"
     enabled: bool = True
     # Shown to read-only demo sessions.
@@ -130,6 +132,7 @@ class ProfileOut(ProfileIn):
     created_at: UTCDatetime
     updated_at: UTCDatetime
     next_run_at: UTCDatetime | None = None
+    schedule_anchor: date | None = None
     # Demo sessions don't see email addresses.
     email_hidden: bool = False
 

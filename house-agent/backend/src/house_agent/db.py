@@ -40,6 +40,8 @@ _ADDED_COLUMNS = {
     "search_profiles": {
         "notify": ("JSON",) * 2,
         "demo_visible": ("BOOLEAN NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        "schedule_every": ("VARCHAR(10) NOT NULL DEFAULT 'week'",) * 2,
+        "schedule_anchor": ("DATE",) * 2,
     },
     "listings": {
         "reject_reason": ("TEXT", "TEXT"),

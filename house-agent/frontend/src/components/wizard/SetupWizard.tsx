@@ -1,3 +1,4 @@
+import { MONTH_DAYS, describeSchedule, ordinal } from "../../lib/schedule";
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Home, Loader2, MapPin, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -23,6 +24,7 @@ import {
   hasLand,
   initialAnswers,
   placeCode,
+  scheduleFor,
   toProfile,
 } from "../../lib/wizard";
 import { CheckList, ChipGroup, MultiChips, OptionCard, Question, hoursLabel } from "./ui";
@@ -465,6 +467,8 @@ export function SetupWizard({
                 {(
                   [
                     ["weekly", "Once a week", "Recommended. Most listings stay up for weeks."],
+                    ["biweekly", "Every two weeks", "Half the cost of weekly. New listings may wait up to two weeks."],
+                    ["monthly", "Once a month", "Cheapest. Suits slow markets or long-range planning."],
                     ["daily", "Every day", "For fast-moving markets. Costs about 7x more."],
                     ["manual", "Only when I ask", "Run searches yourself from the dashboard."],
                   ] as [Frequency, string, string][]
@@ -474,7 +478,22 @@ export function SetupWizard({
               </div>
               {a.frequency !== "manual" && (
                 <div className="grid gap-4 sm:grid-cols-3">
-                  {a.frequency === "weekly" && (
+                  {a.frequency === "monthly" && (
+                    <label className="block space-y-1">
+                      <span className="text-sm font-medium">Day of the month</span>
+                      <select className="input" value={a.monthDay} onChange={(e) => set({ monthDay: Number(e.target.value) })}>
+                        {MONTH_DAYS.map((d) => (
+                          <option key={d} value={d}>
+                            {ordinal(d)}
+                          </option>
+                        ))}
+                      </select>
+                      {a.monthDay > 28 && (
+                        <span className="block text-xs text-stone-500">In shorter months it runs on the last day.</span>
+                      )}
+                    </label>
+                  )}
+                  {(a.frequency === "weekly" || a.frequency === "biweekly") && (
                     <label className="block space-y-1">
                       <span className="text-sm font-medium">Day</span>
                       <select className="input" value={a.day} onChange={(e) => set({ day: Number(e.target.value) })}>
@@ -587,7 +606,7 @@ export function SetupWizard({
                 <Row label="Schedule" onEdit={() => setStep("schedule")}>
                   {a.frequency === "manual"
                     ? "Only when you run it"
-                    : `${a.frequency === "daily" ? "Every day" : `Every ${DAYS[a.day]}`} at ${a.time}`}
+                    : describeSchedule(scheduleFor(a)!)}
                 </Row>
               </dl>
               <label className="flex items-center gap-2 text-sm">

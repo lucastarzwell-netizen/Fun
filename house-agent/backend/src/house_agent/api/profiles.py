@@ -32,9 +32,18 @@ def _out(profile: SearchProfile, demo: bool = False) -> ProfileOut:
 def _validate_cron(body: ProfileIn) -> None:
     if body.schedule_cron.strip():
         try:
-            scheduler.cron_trigger(body.schedule_cron, body.timezone)
+            scheduler.build_trigger(body.schedule_cron, body.schedule_every, body.timezone)
         except Exception as e:
             raise HTTPException(422, f"Invalid schedule: {e}") from e
+
+
+def _set_anchor(profile: SearchProfile, schedule_changed: bool) -> None:
+    """Every-two-weeks schedules count fortnights from their first run's date. Keep that date
+    while the schedule stays the same, so saving other settings doesn't shift the weeks."""
+    if profile.schedule_every != "2weeks" or not profile.schedule_cron.strip():
+        profile.schedule_anchor = None
+    elif schedule_changed or profile.schedule_anchor is None:
+        profile.schedule_anchor = scheduler.first_run_date(profile.schedule_cron, profile.timezone)
 
 
 @router.get("", response_model=list[ProfileOut])
@@ -60,6 +69,7 @@ def create_profile(
     data = body.model_dump(mode="json")
     data["name"] = unique_name(session, user.id, body.name, body.timezone)
     profile = SearchProfile(owner_id=user.id, **data)
+    _set_anchor(profile, schedule_changed=True)
     session.add(profile)
     session.commit()
     scheduler.sync_profile(profile)
@@ -87,8 +97,12 @@ def update_profile(
     profile = owned_profile(session, user, profile_id)
     data = body.model_dump(mode="json")
     data["name"] = unique_name(session, user.id, body.name, body.timezone, exclude_id=profile.id)
+    before = (profile.schedule_cron, profile.schedule_every, profile.timezone)
     for key, value in data.items():
         setattr(profile, key, value)
+    _set_anchor(
+        profile, (profile.schedule_cron, profile.schedule_every, profile.timezone) != before
+    )
     session.commit()
     scheduler.sync_profile(profile)
     return _out(profile)

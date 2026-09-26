@@ -54,6 +54,11 @@ class SearchProfile(Base):
     criteria: Mapped[dict[str, Any]] = mapped_column(JSON)
     # Standard 5-field cron, evaluated in `timezone`. Empty = manual runs only.
     schedule_cron: Mapped[str] = mapped_column(String(100), default="0 7 * * 5")
+    # "week": schedule_cron as is. "2weeks": "M H * * D" every other week, counting from
+    # schedule_anchor (the first run's date). "month": "M H D * *" on day D, or the month's
+    # last day when it's shorter.
+    schedule_every: Mapped[str] = mapped_column(String(10), default="week")
+    schedule_anchor: Mapped[date | None] = mapped_column(Date, nullable=True)
     timezone: Mapped[str] = mapped_column(String(64), default="America/New_York")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # Shown to read-only demo sessions (auth.DEMO). Off unless the owner turns it on.

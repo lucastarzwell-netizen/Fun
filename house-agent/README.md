@@ -16,7 +16,9 @@ backend/   Python API (FastAPI + SQLite), scheduler, and the Claude search agent
    a central address, ZIP code, or landmark with a maximum drive time, how much work
    they'll take on, and how often to search. From the location and drive time, Claude
    suggests the counties to search (`POST /api/wizard/regions`). The user unchecks or adds
-   counties, and the answers become a **search profile**.
+   counties, and the answers become a **search profile**. Searches can run every day, every week, every two
+   weeks (on a weekday, counted from the first run) or monthly (on a date; the 29th-31st fall
+   back to the month's last day in shorter months).
 2. A **search profile** holds the criteria (price, lot size, property type), the anchors
    (e.g. airports plus a maximum drive time), the regions to search (counties, optionally
    with a Redfin county ID), the condition rules, and a weekly schedule.
