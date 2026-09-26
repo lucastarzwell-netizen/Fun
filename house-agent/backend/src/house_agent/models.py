@@ -109,7 +109,11 @@ class Listing(Base):
     drive_km: Mapped[float | None] = mapped_column(Float, nullable=True)
     condition: Mapped[str] = mapped_column(String(20), default=UNVERIFIED)
     condition_notes: Mapped[str] = mapped_column(Text, default="")
+    # The main link, chosen from `sources` (see links.choose_primary).
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # MLS number as shown on the listing ("MLS# 60012345"), normalized. The same on every
+    # site that syndicates the listing, so it's the best key for matching across sites.
+    mls_number: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     listing_state: Mapped[str] = mapped_column(String(20), default=ACTIVE, index=True)
     removed_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -128,6 +132,34 @@ class Listing(Base):
     events: Mapped[list[ListingEvent]] = relationship(
         back_populates="listing", cascade="all, delete-orphan", order_by="ListingEvent.id"
     )
+    sources: Mapped[list[ListingSource]] = relationship(
+        back_populates="listing", cascade="all, delete-orphan", order_by="ListingSource.id"
+    )
+
+
+class ListingSource(Base):
+    """One place a listing has been seen: a site and the listing's URL there.
+
+    A listing keeps one row per site. Every sighting refreshes it (and updates the URL if
+    the site moved it); a link that stops working is marked dead and never used as the main
+    link again unless it's seen working later.
+    """
+
+    __tablename__ = "listing_sources"
+    __table_args__ = (UniqueConstraint("listing_id", "site"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), index=True
+    )
+    # A key from agent.sources.SITES ("zillow"), or the host name for other sites.
+    site: Mapped[str] = mapped_column(String(80))
+    url: Mapped[str] = mapped_column(String(500))
+    first_seen: Mapped[date] = mapped_column(Date)
+    last_seen: Mapped[date] = mapped_column(Date)
+    dead: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    listing: Mapped[Listing] = relationship(back_populates="sources")
 
 
 class ListingEvent(Base):

@@ -148,6 +148,16 @@ class ListingEventOut(BaseModel):
     created_at: UTCDatetime
 
 
+class ListingSourceOut(BaseModel):
+    """A site the listing has been seen on."""
+
+    site: str
+    name: str
+    url: str
+    last_seen: date
+    dead: bool
+
+
 class ListingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -169,6 +179,9 @@ class ListingOut(BaseModel):
     condition: Condition
     condition_notes: str
     url: str | None
+    mls_number: str | None = None
+    # Other working places it's listed (the main `url` excluded), best first.
+    also_on: list[ListingSourceOut] = []
     listing_state: ListingState
     removed_reason: str | None
     reject_reason: str | None = None

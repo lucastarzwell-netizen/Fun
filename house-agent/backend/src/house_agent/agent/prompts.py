@@ -28,6 +28,8 @@ with no listings where there should be some), don't retry or work around it; mov
 next site in the list and report the blocked site.
 - The same house is often on several sites. Report it once, with whichever listing URL you \
 used.
+- When a page shows the listing's MLS number ("MLS# 60012345", "MLS® Number"), report it \
+in mls_number; it identifies the same listing across sites.
 - Never contact agents, submit forms, create accounts, or try to get past bot checks or \
 CAPTCHAs.
 - When you are done, call the submit tool once with all results. Don't write a prose \
@@ -118,14 +120,35 @@ def land_block(land: LandPrefs) -> str:
     return "Vacant land preferences:\n" + body
 
 
+def _money(price: float | None) -> str:
+    return f"${price:,.0f}" if price is not None else "price unknown"
+
+
+def _tracked_row(t: dict) -> str:
+    mls = f" | MLS# {t['mls']}" if t.get("mls") else ""
+    return (
+        f"- ref {t['ref']}: {t['address']}, {t['city']}, {t['state']} | {_money(t['price'])}{mls}"
+    )
+
+
+def _item_rows(items: list[dict]) -> str:
+    rows = []
+    for i in items:
+        urls = i.get("urls") or []
+        where = " ; ".join(urls) if urls else "no URL on file"
+        rows.append(f"{_tracked_row(i)} | URLs, best first: {where}")
+    return "\n".join(rows)
+
+
 def search_prompt(
     c: Criteria,
     region_label: str,
     region_anchor: str,
     plan: list[tuple[str, str | None]],
-    known: list[str],
+    tracked: list[dict],
     excluded: list[str],
     rejected: list[str] | None = None,
+    fetch_budget: int | None = None,
 ) -> str:
     if plan:
         lines = []
@@ -152,10 +175,22 @@ def search_prompt(
         where,
         "Buyer's criteria:\n" + criteria_block(c),
     ]
-    if known:
+    if fetch_budget:
         parts.append(
-            "Already tracked; skip these (don't open or report them):\n"
-            + "\n".join(f"- {k}" for k in known)
+            f"Page budget: you can open about {fetch_budget} pages for this county, results "
+            "pages included, so spend them where they matter. Read results pages first and "
+            "judge listings from their cards (price, lot size, type, status, location). Open a "
+            "listing's own page only for candidates that pass those filters, most promising "
+            "first. If the budget runs out, still report the candidates you didn't open, with "
+            'condition unverified and condition_notes "not opened yet", instead of dropping them.'
+        )
+    if tracked:
+        parts.append(
+            "Already tracked; don't open these or report them as new listings. When one of them "
+            "appears on a results page you're reading, add it to seen_tracked with its ref and "
+            "the price and status shown there (and its URL on that site and MLS number, if "
+            "shown). Don't go looking for them; just note the ones you come across:\n"
+            + "\n".join(_tracked_row(t) for t in tracked)
         )
     if excluded:
         parts.append(
@@ -167,9 +202,9 @@ def search_prompt(
             "listed here:\n" + "\n".join(f"- {r}" for r in rejected)
         )
     parts.append(
-        "For every other listing that matches the price/lot/type filters, open its listing "
-        "page, read the description, and label its condition. Report every listing you "
-        "opened: the matches, and the ones you reject (condition reject, with a one-sentence "
+        "For every other listing that matches the price/lot/type filters, read its listing "
+        "page's description (within the page budget) and label its condition. Report every "
+        "candidate: the matches, and the ones you reject (condition reject, with a one-sentence "
         'reject_reason addressed to the buyer naming the rule it failed, e.g. "Listing says '
         'it needs a new roof and foundation work; you asked for cosmetic updates only."). '
         "The buyer reviews rejections, so be specific. Don't report listings the results page "
@@ -178,21 +213,40 @@ def search_prompt(
     return "\n\n".join(parts)
 
 
+def status_prompt(c: Criteria, items: list[dict]) -> str:
+    sites = ", ".join(SITES[k].name for k in sites_for(c))
+    return (
+        "Quick status check of listings the buyer tracks: for each one, find out whether it "
+        "is still for sale and at what price. Don't judge its condition.\n\n"
+        f"{_item_rows(items)}\n\n"
+        f"{COUNTRY_NOTES[c.country]}\n\n"
+        "How, cheapest first:\n"
+        '1. web_search for its MLS number (e.g. "MLS# 60012345"), or without one its full '
+        'address plus "for sale". Result snippets often show the price and status (for sale, '
+        "pending, sold, off market) on several sites. If the snippets agree and look current, "
+        "that's enough; don't open a page.\n"
+        "2. Otherwise open its URLs in the order given. If a URL is gone or says the listing "
+        "was removed, put it in dead_urls and try the next.\n"
+        f"3. If none of that works, look for it on another site ({sites}).\n"
+        "Status: active (for sale), pending, contingent (under contract / conditionally sold), "
+        "sold, off_market (withdrawn, expired, cancelled), not_found (no trace of a current "
+        "listing), unknown (couldn't tell, e.g. every page blocked).\n"
+        "Report every ref exactly once, with the URL where you confirmed it and its MLS number "
+        "if you saw one. Then call submit_status_results."
+    )
+
+
 def check_prompt(c: Criteria, items: list[dict]) -> str:
     sites = ", ".join(SITES[k].name for k in sites_for(c))
-    rows = "\n".join(
-        f"- ref {i['ref']}: {i['address']}, {i['city']}, {i['state']} | "
-        f"price on file {i['price']} | {i['url'] or 'no URL on file'}"
-        for i in items
-    )
     return (
-        "Re-check these tracked listings. For each one, open its listing page (search for it "
-        "if there's no URL or the URL fails) and report its current status and price. Also "
-        "re-read the description and label its condition. If you label one reject, give a "
-        "one-sentence reject_reason addressed to the buyer.\n\n"
-        f"{rows}\n\nBuyer's criteria:\n{criteria_block(c)}\n\n"
-        "If a listing's page is blocked or gone, search for the address and check it on "
-        f"another site ({sites}).\n"
-        "Report every ref exactly once, using status 'unknown' if you couldn't load it. Then "
-        "call submit_check_results."
+        "Re-read these tracked listings: their price or status changed, or their condition "
+        "hasn't been read yet. For each one, open its listing page (try the URLs in the order "
+        "given; if they fail, search for its MLS number or address) and report its current "
+        "status and price. Read the description and label its condition. If you label one "
+        "reject, give a one-sentence reject_reason addressed to the buyer.\n\n"
+        f"{_item_rows(items)}\n\nBuyer's criteria:\n{criteria_block(c)}\n\n"
+        "If a URL is gone or says the listing was removed, put it in dead_urls. If every page "
+        f"is blocked or gone, find the listing on another site ({sites}).\n"
+        "Report every ref exactly once, using status 'unknown' if you couldn't load it, with "
+        "the URL you used and its MLS number if shown. Then call submit_check_results."
     )

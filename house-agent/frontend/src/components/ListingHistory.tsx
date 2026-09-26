@@ -29,6 +29,10 @@ function describe(e: ListingEvent) {
       return `Included by you${e.note ? `: "${e.note}"` : ""}`;
     case "status_change":
       return `Status ${e.old_value} → ${e.new_value}`.replace("contingent", "under contract");
+    case "link_changed":
+      return `Main link moved from ${e.old_value} to ${e.new_value}`;
+    case "mls_changed":
+      return `New MLS# ${e.new_value} (was ${e.old_value}): usually a relisting`;
     case "check_failed":
       return `Couldn't check listing${e.note ? ` (${e.note})` : ""}`;
     default:

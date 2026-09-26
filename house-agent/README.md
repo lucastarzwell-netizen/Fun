@@ -21,12 +21,21 @@ backend/   Python API (FastAPI + SQLite), scheduler, and the Claude search agent
    (e.g. airports plus a maximum drive time), the regions to search (counties, optionally
    with a Redfin county ID), the condition rules, and a weekly schedule.
 3. On each run, `agent/runner.py`:
-   - **re-checks** every active listing in batches: still for sale? price changed? condition?
-   - **searches** each region. The agent opens the Redfin county results page (built from
-     the criteria, same URL pattern as the routine), opens each new candidate's listing,
-     and labels its condition as `good`, `needs_updating` or `reject`. For counties added
-     through the wizard, the first run finds the Redfin county page and saves its ID, so later
-     runs open it directly.
+   - **searches** each county, spreading the work across listing sites. It judges listings
+     from the results pages, opens the pages of promising candidates (within a page budget
+     per county), and labels their condition as `good`, `needs_updating` or `reject`.
+     Tracked listings it passes on a results page are reported with their current price and
+     status, so they count as checked without opening their pages. Counties that found
+     nothing new in their last few searches get a smaller page budget.
+   - **status-checks** (with a cheaper model) only the tracked listings the searches didn't
+     show and that weren't confirmed in the last few days: a web search for the MLS number
+     or address, reading prices and statuses from the result snippets, and opening a saved
+     link only when that isn't enough.
+   - **re-reads** condition only for listings whose price or status changed, and for ones
+     whose condition couldn't be read yet.
+   Each listing keeps its MLS number and a link for every site it has been seen on. The main
+   link is the working one on the site that blocks the agent least, and it moves when a
+   link dies or the listing turns up somewhere more reliable.
 4. The agent (`agent/claude_agent.py`) uses Claude with the server-side `web_search` /
    `web_fetch` tools and reports back through a `submit_*` tool with a checked schema.
    It only reports what it saw.
@@ -119,9 +128,17 @@ the service and run `house-agent import <file>` with your seed file.
 | Variable | Default | |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | (required for runs) | |
-| `HOUSE_AGENT_MODEL` | `claude-opus-5` | Must support the `*_20260209` web tools and adaptive thinking (Opus 4.6+, Sonnet 4.6+) |
-| `HOUSE_AGENT_EFFORT` | `high` | `low` / `medium` / `high`; lower costs less |
-| `HOUSE_AGENT_CHECK_BATCH` | `6` | Listings re-checked per model call |
+| `HOUSE_AGENT_MODEL` | `claude-opus-5` | County searches and condition re-reads. Must support the `*_20260209` web tools and adaptive thinking (Opus 4.6+, Sonnet 4.6+) |
+| `HOUSE_AGENT_EFFORT` | `medium` | Effort for that model: `low` / `medium` / `high`; lower costs less |
+| `HOUSE_AGENT_CHECK_MODEL` | `claude-sonnet-5` | Quick status/price checks. Same tool requirements (not Haiku) |
+| `HOUSE_AGENT_CHECK_EFFORT` | `low` | Effort for status checks |
+| `HOUSE_AGENT_SEARCH_FETCHES` | `20` | Pages the agent may open per county search |
+| `HOUSE_AGENT_QUIET_FETCHES` | `10` | Page budget for counties that found nothing new lately |
+| `HOUSE_AGENT_QUIET_AFTER` | `3` | Searches in a row with nothing new before a county counts as quiet (`0` = never) |
+| `HOUSE_AGENT_SEARCH_WEB_SEARCHES` | `10` | Web searches per county search |
+| `HOUSE_AGENT_RECHECK_DAYS` | `3` | Tracked listings confirmed within this many days aren't checked again |
+| `HOUSE_AGENT_RELABEL_LIMIT` | `12` | Most listings re-read for condition per run |
+| `HOUSE_AGENT_STATUS_BATCH` / `HOUSE_AGENT_CHECK_BATCH` | `8` / `6` | Listings per status-check / re-read call |
 | `HOUSE_AGENT_DATABASE_URL` | `sqlite:///backend/data/house_agent.db` | Any SQLAlchemy URL (e.g. Postgres) |
 | `HOUSE_AGENT_SCHEDULER` | `1` | `0` turns off the in-process scheduler |
 | `HOUSE_AGENT_CORS_ORIGINS` | Vite dev origins | |
@@ -166,7 +183,7 @@ against a fake Anthropic client. None of them call the network.
   around a block. None of these sites offer a public API, and their terms don't allow
   scraping. Light personal use is one thing; if other people will use this, switch to a
   licensed listings API before opening it up.
-- **Cost.** A full run is roughly 30 region searches plus re-checks of every tracked house,
-  so expect several dollars per run on Opus. Lower `HOUSE_AGENT_EFFORT` or use a Sonnet
-  model to cut that; the Runs page shows token and fetch counts for each run.
+- **Cost.** Most of a run's cost is the county searches. The Runs page shows an estimated
+  cost per run, per model and per county (model tokens only; web search and fetch fees are
+  extra), which is the place to see what a settings change saves.
 - **Drive times** are the model's estimates, as in the sheet.

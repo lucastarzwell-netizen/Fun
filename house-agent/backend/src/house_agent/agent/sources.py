@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from ..schemas import Criteria, Region
 
@@ -167,3 +168,30 @@ def site_plan(
 
     keys.sort(key=group)  # stable sort keeps the rotation within each group
     return [(k, SITES[k].county_url(region, criteria)) for k in keys]
+
+
+# Host name -> site key, for filing a listing URL under the site it came from.
+_DOMAINS = {
+    "redfin.com": "redfin",
+    "zillow.com": "zillow",
+    "realtor.com": "realtor",
+    "homes.com": "homes",
+    "landwatch.com": "landwatch",
+    "realtor.ca": "realtor_ca",
+    "zolo.ca": "zolo",
+    "point2homes.com": "point2",
+    "redfin.ca": "redfin_ca",
+}
+
+
+def site_for_url(url: str) -> str:
+    """'https://www.zillow.com/homedetails/...' -> 'zillow'; other sites -> their host name."""
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    for domain, key in _DOMAINS.items():
+        if host == domain or host.endswith("." + domain):
+            return key
+    return host[:80] or "unknown"
+
+
+def site_name(key: str) -> str:
+    return SITES[key].name if key in SITES else key

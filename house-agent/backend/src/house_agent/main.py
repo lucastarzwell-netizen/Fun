@@ -19,6 +19,7 @@ from .auth import ensure_default_user
 from .auth import router as auth_router
 from .config import settings
 from .db import SessionLocal, init_db
+from .links import backfill_sources
 from .naming import fix_existing_duplicates
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -43,6 +44,8 @@ async def lifespan(app: FastAPI):
                 log.warning("Closed %d run(s) interrupted by a restart", n)
             for old_name, new_name in fix_existing_duplicates(session):
                 log.info("Renamed duplicate search %r to %r", old_name, new_name)
+            if n := backfill_sources(session):
+                log.info("Filed %d existing listing link(s) by site", n)
         except Exception:
             session.rollback()
             log.exception("Startup housekeeping failed; continuing")

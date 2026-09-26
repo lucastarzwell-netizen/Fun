@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { api } from "../lib/api";
 import { cx, dateTime, duration, money } from "../lib/format";
 import { SITES } from "../lib/wizard";
-import type { Run } from "../lib/types";
+import type { Run, RunSummary, Usage, UsageCounts } from "../lib/types";
 import { Badge, type Tone } from "./Badge";
 
 const SITE_NAMES: Record<string, string> = Object.fromEntries(SITES.map((x) => [x.key, x.name]));
@@ -31,7 +31,9 @@ export function RunsView({ profileId }: { profileId: number }) {
     <div className="space-y-5">
       <div>
         <h2 className="font-display text-xl font-semibold">Search runs</h2>
-        <p className="text-sm text-stone-500">Each run re-checks tracked houses, then searches every region.</p>
+        <p className="text-sm text-stone-500">
+          Each run searches every county, then checks the tracked listings the searches didn't show.
+        </p>
       </div>
       <div className="card divide-y divide-stone-100 dark:divide-stone-800">
         {data.map((run) => (
@@ -74,8 +76,10 @@ function headline(run: Run) {
     const p = s.progress;
     if (!p) return "Starting…";
     return p.phase === "recheck"
-      ? `Re-checking listings ${p.done}/${p.total}`
-      : `Searching ${p.current} (${p.done + 1}/${p.total})`;
+      ? `Checking listings ${p.done}/${p.total}`
+      : p.phase === "reread"
+        ? `Re-reading listings ${p.done}/${p.total}`
+        : `Searching ${p.current} (${p.done + 1}/${p.total})`;
   }
   const parts = [
     ...(run.status === "cancelled" ? ["Stopped early"] : []),
@@ -97,7 +101,7 @@ function RunDetail({ id }: { id: number }) {
   if (!data) return <div className="px-10 pb-4 text-sm text-stone-500">Loading…</div>;
   const s = data.summary;
   return (
-    <div className="grid gap-4 bg-sand-50/60 px-10 py-4 text-sm md:grid-cols-2 dark:bg-stone-900/40">
+    <div className="grid grid-cols-1 gap-4 bg-sand-50/60 px-4 py-4 text-sm sm:px-10 md:grid-cols-2 dark:bg-stone-900/40">
       <Section title="Added" items={s.added} />
       <Section title="Removed" items={s.removed?.map((r) => `${r.listing} — ${r.reason}`)} />
       <Section
@@ -135,21 +139,97 @@ function RunDetail({ id }: { id: number }) {
           </p>
         </div>
       )}
-      {s.usage && (
+      {s.checks && (
         <div>
-          <h4 className="mb-1 font-medium">Usage</h4>
+          <h4 className="mb-1 font-medium">Tracked listings</h4>
           <p className="text-stone-600 dark:text-stone-400">
-            {s.usage.calls} model calls · {s.usage.web_fetches} page fetches · {s.usage.web_searches} searches ·{" "}
-            {Math.round((s.usage.input_tokens + s.usage.output_tokens) / 1000)}k tokens
+            {s.checks.seen_in_search} confirmed during the county searches · {s.checks.status_checked} quick
+            checks · {s.checks.skipped_recent} skipped (checked in the last few days) · {s.checks.reread} re-read
+            for condition
           </p>
         </div>
       )}
+      {s.usage && <UsageSection usage={s.usage} regions={s.region_stats} />}
       {data.log && (
         <details className="md:col-span-2">
           <summary className="cursor-pointer font-medium">Log</summary>
           <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-stone-900 p-3 text-xs text-stone-100">{data.log}</pre>
         </details>
       )}
+    </div>
+  );
+}
+
+const MODEL_NAMES: Record<string, string> = {
+  "claude-opus-5": "Opus 5",
+  "claude-opus-5-5": "Opus 5.5",
+  "claude-sonnet-5": "Sonnet 5",
+  "claude-haiku-4-5": "Haiku 4.5",
+  "claude-fable-5-1": "Fable 5.1",
+};
+
+function usd(n: number | null | undefined) {
+  if (n == null) return "?";
+  return n < 0.01 ? "<$0.01" : `$${n.toFixed(2)}`;
+}
+
+function tokensK(u: UsageCounts) {
+  return `${Math.round((u.input_tokens + u.output_tokens + (u.cache_read_tokens ?? 0)) / 1000)}k tokens`;
+}
+
+function UsageSection({ usage, regions }: { usage: Usage; regions?: RunSummary["region_stats"] }) {
+  const models = Object.entries(usage.by_model ?? {});
+  const counties = Object.entries(regions ?? {});
+  return (
+    <div className="min-w-0 md:col-span-2">
+      <h4 className="mb-1 font-medium">
+        Usage{usage.est_cost_usd != null && <span className="font-normal text-stone-500"> · about {usd(usage.est_cost_usd)}</span>}
+      </h4>
+      <p className="text-stone-600 dark:text-stone-400">
+        {usage.calls} model calls · {usage.web_fetches} pages opened · {usage.web_searches} web searches · {tokensK(usage)}
+      </p>
+      {models.length > 0 && (
+        <ul className="mt-1 space-y-0.5 text-stone-600 dark:text-stone-400">
+          {models.map(([model, u]) => (
+            <li key={model}>
+              <span className="font-medium text-stone-800 dark:text-stone-200">{MODEL_NAMES[model] ?? model}</span>:{" "}
+              {u.calls} calls · {tokensK(u)} · {usd(u.est_cost_usd)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {counties.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-stone-600 dark:text-stone-400">By county</summary>
+          <div className="mt-1 overflow-x-auto">
+            <table className="w-full min-w-[420px] text-left text-xs">
+              <thead className="text-stone-500">
+                <tr>
+                  <th className="py-1 pr-3 font-medium">County</th>
+                  <th className="py-1 pr-3 font-medium">New</th>
+                  <th className="py-1 pr-3 font-medium">Tracked seen</th>
+                  <th className="py-1 pr-3 font-medium">Pages (budget)</th>
+                  <th className="py-1 font-medium">Cost</th>
+                </tr>
+              </thead>
+              <tbody className="text-stone-700 dark:text-stone-300">
+                {counties.map(([label, r]) => (
+                  <tr key={label} className="border-t border-stone-100 dark:border-stone-800">
+                    <td className="py-1 pr-3">{label}</td>
+                    <td className="py-1 pr-3 tabular-nums">{r.added}</td>
+                    <td className="py-1 pr-3 tabular-nums">{r.seen_tracked}</td>
+                    <td className="py-1 pr-3 tabular-nums">
+                      {r.usage?.web_fetches ?? "?"} ({r.fetch_budget})
+                    </td>
+                    <td className="py-1 tabular-nums">{usd(r.usage?.est_cost_usd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+      <p className="mt-1 text-xs text-stone-400">Estimate from model tokens; web search and page-fetch fees not included.</p>
     </div>
   );
 }

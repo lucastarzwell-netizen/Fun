@@ -272,8 +272,10 @@ function RunBanner({
   const label = !progress
     ? "Starting the search…"
     : progress.phase === "recheck"
-      ? `Re-checking your tracked listings (${progress.done} of ${progress.total})`
-      : `Searching ${progress.current} (${progress.done + 1} of ${progress.total} counties)`;
+      ? `Checking tracked listings the search didn't show (${progress.done} of ${progress.total})`
+      : progress.phase === "reread"
+        ? `Re-reading changed listings (${progress.done} of ${progress.total})`
+        : `Searching ${progress.current} (${progress.done + 1} of ${progress.total} counties)`;
   return (
     <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
       <div className="flex items-center gap-2">

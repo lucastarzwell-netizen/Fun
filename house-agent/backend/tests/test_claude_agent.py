@@ -69,7 +69,9 @@ def test_pause_turn_then_submit():
     agent = ClaudeSearchAgent(client=client, model="claude-opus-5")
     result = _search(agent)
     assert result.listings[0].address == "1 Farm Rd"
-    assert agent.usage.calls == 2 and agent.usage.web_fetches == 4
+    usage = agent.usage.as_dict()
+    assert usage["calls"] == 2 and usage["web_fetches"] == 4
+    assert usage["by_model"]["claude-opus-5"]["calls"] == 2
     # The resumed request carries the paused assistant turn and no extra user message.
     assert client.requests[1]["messages"][-1]["role"] == "assistant"
     tools = {t["name"] for t in client.requests[0]["tools"]}
@@ -101,3 +103,34 @@ def test_refusal_raises():
     client = FakeClient([_resp("refusal", [])])
     with pytest.raises(AgentError):
         _search(ClaudeSearchAgent(client=client, model="claude-opus-5"))
+
+
+def test_status_checks_use_the_cheaper_model_without_fallbacks():
+    status = SimpleNamespace(
+        type="tool_use",
+        name="submit_status_results",
+        id="tu_1",
+        input={"checks": [{"ref": 0, "status": "active", "price": 1000}]},
+    )
+    client = FakeClient([_resp("tool_use", [status])])
+    agent = ClaudeSearchAgent(client=client, model="claude-opus-5", check_model="claude-sonnet-5")
+    item = {"ref": 0, "address": "1 Farm Rd", "city": "Adrian", "state": "MI", "price": 1000}
+    result = agent.status_check(Criteria(), [item])
+    assert result.checks[0].status == "active"
+    request = client.requests[0]
+    assert request["model"] == "claude-sonnet-5"
+    assert request["output_config"] == {"effort": "low"}
+    assert "fallbacks" not in request and "betas" not in request
+    assert request["cache_control"] == {"type": "ephemeral"}
+
+
+def test_county_search_uses_main_model_budget_and_fallbacks():
+    client = FakeClient([_resp("tool_use", [_tool_use(GOOD)])])
+    agent = ClaudeSearchAgent(client=client, model="claude-opus-5")
+    agent.search_region(Criteria(), "Lenawee County, MI", "DTW", [], [], [], fetch_budget=12)
+    request = client.requests[0]
+    assert request["model"] == "claude-opus-5" and request["fallbacks"] == "default"
+    assert request["output_config"] == {"effort": "medium"}
+    fetch = next(t for t in request["tools"] if t["name"] == "web_fetch")
+    assert fetch["max_uses"] == 12
+    assert "about 12 pages" in request["messages"][0]["content"]

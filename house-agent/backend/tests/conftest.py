@@ -5,6 +5,8 @@ from pathlib import Path
 _tmp = tempfile.mkdtemp(prefix="house-agent-test-")
 os.environ["HOUSE_AGENT_DATABASE_URL"] = f"sqlite:///{Path(_tmp) / 'test.db'}"
 os.environ["HOUSE_AGENT_SCHEDULER"] = "0"
+# Re-check tracked listings on every run (tests run several runs on one day).
+os.environ["HOUSE_AGENT_RECHECK_DAYS"] = "0"
 
 import pytest  # noqa: E402
 

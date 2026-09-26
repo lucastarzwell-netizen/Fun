@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..addresses import address_key
 from ..agent.runner import is_running, request_stop, stop_requested
+from ..agent.sources import site_name
 from ..auth import get_current_user
 from ..db import get_session
 from ..models import (
@@ -32,6 +33,7 @@ from ..schemas import (
     ListingDetailOut,
     ListingOut,
     ListingPatch,
+    ListingSourceOut,
     RunDetailOut,
     RunOut,
     StatsOut,
@@ -51,10 +53,22 @@ def _previous_price(listing: Listing) -> float | None:
     return None
 
 
+def _also_on(listing: Listing) -> list[ListingSourceOut]:
+    others = [s for s in listing.sources if not s.dead and s.url != listing.url]
+    others.sort(key=lambda s: s.last_seen, reverse=True)
+    return [
+        ListingSourceOut(
+            site=s.site, name=site_name(s.site), url=s.url, last_seen=s.last_seen, dead=s.dead
+        )
+        for s in others
+    ]
+
+
 def _to_out(listing: Listing, last_run: Run | None, cls=ListingOut):
     out = cls.model_validate(listing)
     out.is_new = last_run is not None and listing.first_seen_run_id == last_run.id
     out.previous_price = _previous_price(listing)
+    out.also_on = _also_on(listing)
     return out
 
 
@@ -69,7 +83,7 @@ def list_listings(
     q = (
         select(Listing)
         .where(Listing.profile_id == profile_id)
-        .options(selectinload(Listing.events))
+        .options(selectinload(Listing.events), selectinload(Listing.sources))
         .order_by(Listing.anchor, Listing.price)
     )
     if state != "all":

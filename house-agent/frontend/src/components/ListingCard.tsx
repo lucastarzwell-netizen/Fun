@@ -42,6 +42,7 @@ export function ListingCard({
           </h3>
           <p className="text-sm text-stone-500">
             {l.city}, {l.state}
+            {l.mls_number && <span className="whitespace-nowrap text-xs text-stone-400"> · MLS# {l.mls_number}</span>}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -73,6 +74,20 @@ export function ListingCard({
       {l.condition_notes && (
         <p className="mt-3 line-clamp-3 px-4 text-sm leading-relaxed text-stone-700 dark:text-stone-300">
           {l.condition_notes}
+        </p>
+      )}
+
+      {l.also_on.length > 0 && (
+        <p className="mt-2 px-4 text-xs text-stone-500">
+          Also on:{" "}
+          {l.also_on.map((s, i) => (
+            <span key={s.site}>
+              {i > 0 && " · "}
+              <a href={s.url} target="_blank" rel="noreferrer" className="underline decoration-stone-300 hover:text-pine-700">
+                {s.name}
+              </a>
+            </span>
+          ))}
         </p>
       )}
 

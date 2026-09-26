@@ -14,7 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .addresses import address_key
-from .agent.types import FoundListing, ListingCheck
+from .agent.types import FoundListing, ListingCheck, TrackedSighting
+from .links import LinkPolicy, mark_dead, normalize_mls, record_sighting, set_mls, update_primary
 from .models import (
     ACTIVE,
     DISMISSED,
@@ -146,11 +147,16 @@ def apply_check(
     run_id: int | None,
     today: date,
     changes: RunChanges,
+    links: LinkPolicy | None = None,
 ) -> None:
-    """Update an existing active listing from a re-check of its page."""
+    """Update an existing active listing from a re-check (or a results-page sighting)."""
     listing.last_checked = today
-    if check.url and not listing.url:
-        listing.url = check.url
+    if check.status in ("active", "pending", "contingent"):
+        record_sighting(listing, check.url, today)
+    for url in check.dead_urls:
+        mark_dead(listing, url)
+    set_mls(listing, check.mls_number, run_id)
+    update_primary(listing, links or LinkPolicy(), run_id)
 
     if check.status in ("pending", "contingent", "active"):
         _set_market_status(listing, check.status, run_id, changes)
@@ -205,6 +211,27 @@ def apply_check(
         listing.condition_notes = check.condition_notes
 
 
+def apply_sighting(
+    session: Session,
+    listing: Listing,
+    sighting: TrackedSighting,
+    run_id: int | None,
+    today: date,
+    changes: RunChanges,
+    links: LinkPolicy | None = None,
+) -> None:
+    """A tracked listing showed up on a county results page: that's a status/price check
+    without opening its page (condition stays as it was)."""
+    check = ListingCheck(
+        ref=sighting.ref,
+        status=sighting.market_status,
+        price=sighting.price,
+        url=sighting.url,
+        mls_number=sighting.mls_number,
+    )
+    apply_check(session, listing, check, run_id, today, changes, links)
+
+
 def apply_found(
     session: Session,
     profile: SearchProfile,
@@ -213,6 +240,7 @@ def apply_found(
     today: date,
     changes: RunChanges,
     excluded: set[str],
+    links: LinkPolicy | None = None,
 ) -> Listing | None:
     """Record a listing the agent reported: a new match, a rejection (kept, with the
     reason, so the user can see what was left out), or an update to one we know."""
@@ -221,16 +249,42 @@ def apply_found(
         changes.skipped_excluded.append(f"{found.address}, {found.city}, {found.state}")
         return None
 
-    problem = pending_problem(profile, found.market_status) or criteria_problem(
+    hard_problem = pending_problem(profile, found.market_status) or criteria_problem(
         profile, found.price, found.acres
     )
+    problem = hard_problem
     if problem is None and found.condition == "reject":
         problem = _agent_reason(found.reject_reason, found.condition_notes)
 
     existing = session.scalar(
         select(Listing).where(Listing.profile_id == profile.id, Listing.address_key == key)
     )
+    mls = normalize_mls(found.mls_number)
+    if existing is None and mls:
+        # Same MLS listing written differently on another site ("N Main St" vs "North Main").
+        existing = session.scalar(
+            select(Listing).where(
+                Listing.profile_id == profile.id,
+                Listing.mls_number == mls,
+                Listing.state == found.state.upper(),
+            )
+        )
     if existing is not None:
+        if existing.listing_state == DISMISSED:
+            return None
+        record_sighting(existing, found.url, today)
+        set_mls(existing, found.mls_number, run_id)
+        update_primary(existing, links or LinkPolicy(), run_id)
+        if existing.listing_state == ACTIVE and hard_problem and not existing.user_included:
+            # Seen with a price or status that breaks the buyer's rules: same as a re-check.
+            existing.last_checked = today
+            _set_market_status(existing, found.market_status, run_id, changes)
+            if found.price is not None and found.price != existing.price:
+                if existing.price is not None:
+                    _event(existing, run_id, "price_change", existing.price, found.price)
+                existing.price = found.price
+            _reject(existing, run_id, hard_problem, changes, found.condition_notes)
+            return existing
         return _update_existing(existing, found, problem, run_id, today, changes)
 
     listing = Listing(
@@ -252,12 +306,14 @@ def apply_found(
         condition=UNVERIFIED if found.condition == "reject" else found.condition,
         condition_notes=found.condition_notes or "",
         url=found.url,
+        mls_number=mls,
         listing_state=ACTIVE,
         market_status=found.market_status,
         first_seen=today,
         last_checked=today,
         first_seen_run_id=run_id,
     )
+    record_sighting(listing, found.url, today)
     session.add(listing)
     if problem:
         _reject(listing, run_id, problem, changes)

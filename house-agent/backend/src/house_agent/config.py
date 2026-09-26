@@ -9,6 +9,10 @@ from pathlib import Path
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _int(name: str, default: int) -> int:
+    return int(os.environ.get(name, str(default)))
+
+
 def _default_db_url() -> str:
     return f"sqlite:///{_BACKEND_ROOT / 'data' / 'house_agent.db'}"
 
@@ -18,9 +22,30 @@ class Settings:
     database_url: str = field(
         default_factory=lambda: os.environ.get("HOUSE_AGENT_DATABASE_URL", _default_db_url())
     )
-    # Model used by the search agent. Override with HOUSE_AGENT_MODEL.
+    # County searches and condition re-reads: the judgement-heavy work.
     model: str = field(default_factory=lambda: os.environ.get("HOUSE_AGENT_MODEL", "claude-opus-5"))
-    effort: str = field(default_factory=lambda: os.environ.get("HOUSE_AGENT_EFFORT", "high"))
+    effort: str = field(default_factory=lambda: os.environ.get("HOUSE_AGENT_EFFORT", "medium"))
+    # Quick status/price checks of tracked listings: a cheaper model is plenty. Must support
+    # the same web tools (Claude Sonnet 5 or an Opus model; not Haiku).
+    check_model: str = field(
+        default_factory=lambda: os.environ.get("HOUSE_AGENT_CHECK_MODEL", "claude-sonnet-5")
+    )
+    check_effort: str = field(
+        default_factory=lambda: os.environ.get("HOUSE_AGENT_CHECK_EFFORT", "low")
+    )
+    # Page opens per county search, and for counties that found nothing new in their last
+    # `quiet_after_runs` searches.
+    search_fetches: int = field(default_factory=lambda: _int("HOUSE_AGENT_SEARCH_FETCHES", 20))
+    quiet_search_fetches: int = field(default_factory=lambda: _int("HOUSE_AGENT_QUIET_FETCHES", 10))
+    quiet_after_runs: int = field(default_factory=lambda: _int("HOUSE_AGENT_QUIET_AFTER", 3))
+    search_web_searches: int = field(
+        default_factory=lambda: _int("HOUSE_AGENT_SEARCH_WEB_SEARCHES", 10)
+    )
+    # Tracked listings confirmed within this many days aren't checked again.
+    recheck_days: int = field(default_factory=lambda: _int("HOUSE_AGENT_RECHECK_DAYS", 3))
+    # Most listings re-read for condition per run (changed price/status first, then
+    # listings whose condition couldn't be read yet).
+    relabel_limit: int = field(default_factory=lambda: _int("HOUSE_AGENT_RELABEL_LIMIT", 12))
     # Comma-separated list of origins allowed to call the API (the Vite dev server by default).
     cors_origins: list[str] = field(
         default_factory=lambda: [
@@ -35,10 +60,9 @@ class Settings:
     scheduler_enabled: bool = field(
         default_factory=lambda: os.environ.get("HOUSE_AGENT_SCHEDULER", "1") != "0"
     )
-    # How many listings the agent re-checks per model call.
-    check_batch_size: int = field(
-        default_factory=lambda: int(os.environ.get("HOUSE_AGENT_CHECK_BATCH", "6"))
-    )
+    # Listings per model call: condition re-reads, and quick status checks.
+    check_batch_size: int = field(default_factory=lambda: _int("HOUSE_AGENT_CHECK_BATCH", 6))
+    status_batch_size: int = field(default_factory=lambda: _int("HOUSE_AGENT_STATUS_BATCH", 8))
 
 
 settings = Settings()

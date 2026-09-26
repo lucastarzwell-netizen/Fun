@@ -17,7 +17,7 @@ from pydantic import BaseModel, ValidationError
 from ..config import settings
 from ..schemas import Criteria
 from . import prompts
-from .types import CheckResult, SearchResult
+from .types import CheckResult, SearchResult, StatusCheckResult
 
 log = logging.getLogger(__name__)
 
@@ -37,43 +37,99 @@ class SearchAgent(Protocol):
         region_label: str,
         region_anchor: str,
         plan: list[tuple[str, str | None]],
-        known: list[str],
+        tracked: list[dict],
         excluded: list[str],
         rejected: list[str] | None = None,
+        fetch_budget: int | None = None,
     ) -> SearchResult: ...
+
+    def status_check(self, criteria: Criteria, items: list[dict]) -> StatusCheckResult: ...
 
     def check_listings(self, criteria: Criteria, items: list[dict]) -> CheckResult: ...
 
 
+# $ per million tokens (input, output). Cache reads bill at 0.1x input, cache writes 1.25x.
+# Estimates for the Runs page only; server-tool fees (web search/fetch) are not included.
+PRICES: dict[str, tuple[float, float]] = {
+    "claude-fable-5-1": (10.0, 50.0),
+    "claude-fable-5": (10.0, 50.0),
+    "claude-opus-5-5": (4.0, 20.0),
+    "claude-opus-5": (5.0, 25.0),
+    "claude-opus-4-8": (5.0, 25.0),
+    "claude-opus-4-7": (5.0, 25.0),
+    "claude-sonnet-5": (2.0, 10.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+
+_COUNTERS = (
+    "calls",
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_write_tokens",
+    "web_searches",
+    "web_fetches",
+)
+
+
+def estimate_cost(model: str, counts: dict[str, int]) -> float | None:
+    price = PRICES.get(model)
+    if price is None:
+        return None
+    per_in, per_out = price[0] / 1e6, price[1] / 1e6
+    return (
+        counts.get("input_tokens", 0) * per_in
+        + counts.get("output_tokens", 0) * per_out
+        + counts.get("cache_read_tokens", 0) * per_in * 0.1
+        + counts.get("cache_write_tokens", 0) * per_in * 1.25
+    )
+
+
 @dataclass
 class Usage:
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_read_tokens: int = 0
-    web_searches: int = 0
-    web_fetches: int = 0
-    calls: int = 0
+    """Token and tool counts, per model (the check model and the search model differ)."""
+
+    by_model: dict[str, dict[str, int]] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
 
-    def add(self, usage: Any) -> None:
-        self.calls += 1
-        self.input_tokens += getattr(usage, "input_tokens", 0) or 0
-        self.output_tokens += getattr(usage, "output_tokens", 0) or 0
-        self.cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
+    def add(self, usage: Any, model: str = "unknown") -> None:
+        c = self.by_model.setdefault(model, dict.fromkeys(_COUNTERS, 0))
+        c["calls"] += 1
+        c["input_tokens"] += getattr(usage, "input_tokens", 0) or 0
+        c["output_tokens"] += getattr(usage, "output_tokens", 0) or 0
+        c["cache_read_tokens"] += getattr(usage, "cache_read_input_tokens", 0) or 0
+        c["cache_write_tokens"] += getattr(usage, "cache_creation_input_tokens", 0) or 0
         stu = getattr(usage, "server_tool_use", None)
         if stu is not None:
-            self.web_searches += getattr(stu, "web_search_requests", 0) or 0
-            self.web_fetches += getattr(stu, "web_fetch_requests", 0) or 0
+            c["web_searches"] += getattr(stu, "web_search_requests", 0) or 0
+            c["web_fetches"] += getattr(stu, "web_fetch_requests", 0) or 0
 
-    def as_dict(self) -> dict[str, int]:
-        return {
-            "calls": self.calls,
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "cache_read_tokens": self.cache_read_tokens,
-            "web_searches": self.web_searches,
-            "web_fetches": self.web_fetches,
+    def total(self, key: str) -> int:
+        return sum(c.get(key, 0) for c in self.by_model.values())
+
+    def snapshot(self) -> dict[str, dict[str, int]]:
+        return {m: dict(c) for m, c in self.by_model.items()}
+
+    def since(self, snapshot: dict[str, dict[str, int]]) -> dict[str, Any]:
+        """Counts added after `snapshot`, in the same shape as as_dict()."""
+        diff = Usage()
+        for model, c in self.by_model.items():
+            before = snapshot.get(model, {})
+            diff.by_model[model] = {k: c.get(k, 0) - before.get(k, 0) for k in _COUNTERS}
+        diff.by_model = {m: c for m, c in diff.by_model.items() if c["calls"]}
+        return diff.as_dict()
+
+    def as_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {k: self.total(k) for k in _COUNTERS}
+        costs = {m: estimate_cost(m, c) for m, c in self.by_model.items()}
+        out["by_model"] = {
+            m: {**c, "est_cost_usd": None if costs[m] is None else round(costs[m], 4)}
+            for m, c in self.by_model.items()
         }
+        known = [v for v in costs.values() if v is not None]
+        out["est_cost_usd"] = round(sum(known), 4) if known else None
+        return out
 
 
 class AgentError(RuntimeError):
@@ -114,49 +170,114 @@ CHECK_TOOL = submit_tool(
     "Submit the re-check results for every ref. Call once, when finished.",
     CheckResult,
 )
+STATUS_TOOL = submit_tool(
+    "submit_status_results",
+    "Submit the status of every ref. Call once, when finished.",
+    StatusCheckResult,
+)
+
+
+def _supports_fallbacks(model: str) -> bool:
+    """Server-side refusal fallbacks ("default" routing) are for the Opus 5 / Fable 5 tiers."""
+    return model.startswith(("claude-opus-5", "claude-fable-5"))
 
 
 class ClaudeSearchAgent:
-    def __init__(self, client: anthropic.Anthropic | None = None, model: str | None = None):
+    def __init__(
+        self,
+        client: anthropic.Anthropic | None = None,
+        model: str | None = None,
+        check_model: str | None = None,
+    ):
         self.client = client or anthropic.Anthropic()
         self.model = model or settings.model
+        self.check_model = check_model or settings.check_model
         self.usage = Usage()
 
     # -- public API --------------------------------------------------------------------
 
     def search_region(
-        self, criteria, region_label, region_anchor, plan, known, excluded, rejected=None
+        self,
+        criteria,
+        region_label,
+        region_anchor,
+        plan,
+        tracked,
+        excluded,
+        rejected=None,
+        fetch_budget=None,
     ):
+        budget = fetch_budget or settings.search_fetches
         prompt = prompts.search_prompt(
-            criteria, region_label, region_anchor, plan, known, excluded, rejected
+            criteria, region_label, region_anchor, plan, tracked, excluded, rejected, budget
         )
-        # Several sites per county, so allow more page fetches than a single-site search.
-        return self._run(prompt, SEARCH_TOOL, SearchResult, fetch_budget=40)
+        return self._run(
+            prompt,
+            SEARCH_TOOL,
+            SearchResult,
+            model=self.model,
+            effort=settings.effort,
+            fetch_budget=budget,
+            search_budget=settings.search_web_searches,
+        )
+
+    def status_check(self, criteria, items):
+        prompt = prompts.status_prompt(criteria, items)
+        return self._run(
+            prompt,
+            STATUS_TOOL,
+            StatusCheckResult,
+            model=self.check_model,
+            effort=settings.check_effort,
+            fetch_budget=len(items) + 2,
+            search_budget=len(items) * 2 + 2,
+        )
 
     def check_listings(self, criteria, items):
         prompt = prompts.check_prompt(criteria, items)
-        return self._run(prompt, CHECK_TOOL, CheckResult, fetch_budget=len(items) * 3 + 4)
+        return self._run(
+            prompt,
+            CHECK_TOOL,
+            CheckResult,
+            model=self.model,
+            effort=settings.effort,
+            fetch_budget=len(items) * 2 + 2,
+            search_budget=len(items) + 2,
+        )
 
     # -- loop --------------------------------------------------------------------------
 
-    def _tools(self, submit: dict[str, Any], fetch_budget: int) -> list[dict[str, Any]]:
+    def _tools(
+        self, submit: dict[str, Any], fetch_budget: int, search_budget: int
+    ) -> list[dict[str, Any]]:
         return [
-            {"type": "web_search_20260209", "name": "web_search", "max_uses": 10},
+            {"type": "web_search_20260209", "name": "web_search", "max_uses": search_budget},
             {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": fetch_budget},
             submit,
         ]
 
     def _run(
-        self, prompt: str, submit: dict[str, Any], result_type: type[T], fetch_budget: int
+        self,
+        prompt: str,
+        submit: dict[str, Any],
+        result_type: type[T],
+        *,
+        model: str,
+        effort: str,
+        fetch_budget: int,
+        search_budget: int,
     ) -> T:
         messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
-        tools = self._tools(submit, fetch_budget)
+        tools = self._tools(submit, fetch_budget, search_budget)
+        extra: dict[str, Any] = {}
+        if _supports_fallbacks(model):
+            extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
         nudged = False
 
         for _ in range(MAX_TURNS):
             try:
                 with self.client.beta.messages.stream(
-                    model=self.model,
+                    model=model,
                     max_tokens=64000,
                     system=[
                         {
@@ -165,12 +286,14 @@ class ClaudeSearchAgent:
                             "cache_control": {"type": "ephemeral"},
                         }
                     ],
+                    # Also cache the conversation so far: resuming after pause_turn resends
+                    # every page already read.
+                    cache_control={"type": "ephemeral"},
                     thinking={"type": "adaptive"},
-                    output_config={"effort": settings.effort},
+                    output_config={"effort": effort},
                     tools=tools,
                     messages=messages,
-                    betas=["server-side-fallback-2026-07-01"],
-                    fallbacks="default",
+                    **extra,
                 ) as stream:
                     response = stream.get_final_message()
             except anthropic.APIStatusError as e:
@@ -178,8 +301,9 @@ class ClaudeSearchAgent:
             except anthropic.APIConnectionError as e:
                 raise AgentError(f"Could not reach the Claude API: {e}") from e
 
-            self.usage.add(response.usage)
-
+            # Bill to the model that actually answered (a refusal fallback can switch it).
+            served = getattr(response, "model", None)
+            self.usage.add(response.usage, served if isinstance(served, str) else model)
             if response.stop_reason == "refusal":
                 raise AgentError("The model declined this request.")
 

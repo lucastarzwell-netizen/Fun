@@ -86,6 +86,9 @@ export interface Listing {
   condition: Condition;
   condition_notes: string;
   url: string | null;
+  mls_number: string | null;
+  /** Other working places it's listed, besides the main link. */
+  also_on: ListingSource[];
   listing_state: ListingState;
   removed_reason: string | null;
   reject_reason: string | null;
@@ -96,6 +99,14 @@ export interface Listing {
   last_checked: string | null;
   is_new: boolean;
   previous_price: number | null;
+}
+
+export interface ListingSource {
+  site: string;
+  name: string;
+  url: string;
+  last_seen: string;
+  dead: boolean;
 }
 
 export interface ListingEvent {
@@ -122,7 +133,7 @@ export interface Excluded {
 }
 
 export interface RunProgress {
-  phase: "recheck" | "search";
+  phase: "search" | "recheck" | "reread";
   done: number;
   total: number;
   current: string;
@@ -140,13 +151,34 @@ export interface RunSummary {
   skipped_excluded?: string[];
   skipped_regions?: string[];
   errors?: string[];
-  usage?: Record<string, number>;
+  usage?: Usage;
+  region_stats?: Record<
+    string,
+    { added: number; reported: number; seen_tracked: number; fetch_budget: number; usage?: Usage }
+  >;
+  checks?: { seen_in_search: number; status_checked: number; skipped_recent: number; reread: number };
   sites?: Record<string, { used: number; blocked: number }>;
   active_count?: number;
   imported_from?: string;
   email?: string;
   listings_imported?: number;
   excluded_imported?: number;
+}
+
+export interface UsageCounts {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
+  web_searches: number;
+  web_fetches: number;
+}
+
+export interface Usage extends UsageCounts {
+  /** Estimated model-token cost in USD (web search/fetch fees not included). */
+  est_cost_usd?: number | null;
+  by_model?: Record<string, UsageCounts & { est_cost_usd: number | null }>;
 }
 
 export type RunStatus = "queued" | "running" | "succeeded" | "partial" | "failed" | "cancelled";
