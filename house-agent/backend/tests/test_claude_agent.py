@@ -138,3 +138,15 @@ def test_county_search_uses_main_model_budget_and_fallbacks():
     shared, specific = request["messages"][0]["content"]
     assert shared["cache_control"] == {"type": "ephemeral"} and "cache_control" not in specific
     assert "Buyer's criteria" in shared["text"] and "about 12 pages" in specific["text"]
+
+
+def test_search_prompt_caps_the_number_of_sites():
+    client = FakeClient(
+        [_resp("tool_use", [_tool_use(GOOD)]), _resp("tool_use", [_tool_use(GOOD)])]
+    )
+    agent = ClaudeSearchAgent(client=client, model="claude-opus-5")
+    plan = [("redfin", "https://r"), ("zillow", None), ("homes", None)]
+    agent.search_region(Criteria(), "X County, MI", "DTW", plan, [], [], mode="sweep")
+    agent.search_region(Criteria(), "X County, MI", "DTW", plan, [], [], mode="full")
+    sweep, full = (r["messages"][0]["content"][1]["text"] for r in client.requests)
+    assert "at most 2 sites" in sweep and "at most 3 sites" in full

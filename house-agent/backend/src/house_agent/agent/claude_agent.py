@@ -253,10 +253,19 @@ class ClaudeSearchAgent:
         """mode "full": judge every candidate (main model). "sweep": a routine pass with the
         cheaper sweep model that reports new candidates unverified for the main model to read."""
         budget = fetch_budget or settings.search_fetches
-        prompt = prompts.search_prompt(
-            criteria, region_label, region_anchor, plan, tracked, excluded, rejected, budget, mode
-        )
         sweep = mode == "sweep"
+        prompt = prompts.search_prompt(
+            criteria,
+            region_label,
+            region_anchor,
+            plan,
+            tracked,
+            excluded,
+            rejected,
+            budget,
+            mode,
+            settings.sweep_max_sites if sweep else settings.full_max_sites,
+        )
         return self._run(
             prompt,
             SEARCH_TOOL,

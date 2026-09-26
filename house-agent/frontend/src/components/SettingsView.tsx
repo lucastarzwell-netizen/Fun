@@ -138,7 +138,7 @@ export function SettingsView({ profile }: { profile: Profile }) {
 
       <Panel
         title="Listing sites"
-        hint="The agent spreads each search across these sites. Each county starts on a site it didn't use last time, so over a few searches every county is checked on every site. Sites that block the agent are tried last next time."
+        hint="Each county starts on Redfin (small pages, and its links carry your filters), then the other sites cheapest first by measured page size, with Homes.com (which ignores filters) as a last resort. A county search stops after 2 sites (3 for full checks) even when results are few. Sites that nearly always block the agent are skipped, and retried every few runs."
       >
         <div className="grid gap-2 sm:grid-cols-3">
           {sitesFor(c.country).map((site) => {

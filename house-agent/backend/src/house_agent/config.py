@@ -49,6 +49,10 @@ class Settings:
         default_factory=lambda: os.environ.get("HOUSE_AGENT_SWEEP_EFFORT", "low")
     )
     sweep_fetches: int = field(default_factory=lambda: _int("HOUSE_AGENT_SWEEP_FETCHES", 10))
+    # Most listing sites (that load) a county search uses before stopping, even when every
+    # site shows only a few results.
+    sweep_max_sites: int = field(default_factory=lambda: _int("HOUSE_AGENT_SWEEP_SITES", 2))
+    full_max_sites: int = field(default_factory=lambda: _int("HOUSE_AGENT_FULL_SITES", 3))
     # Site every county search starts with (if the search uses it and it isn't being
     # skipped): Redfin has the smallest pages and its links carry the buyer's filters.
     lead_site: str = field(

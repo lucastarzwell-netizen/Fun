@@ -140,6 +140,17 @@ def _item_rows(items: list[dict]) -> str:
     return "\n".join(rows)
 
 
+def _site_limit(max_sites: int | None) -> str:
+    if not max_sites or max_sites < 2:
+        return "Check a second site too when the first shows only a few results. "
+    return (
+        f"Use at most {max_sites} sites whose results load (a site that blocks you doesn't "
+        "count): check the next one only when those so far show just a few results, since "
+        f"each site misses some listings. Stop after {max_sites} even if results are few; "
+        "few or no matches is a normal answer for a quiet county. "
+    )
+
+
 def search_prompt(
     c: Criteria,
     region_label: str,
@@ -150,6 +161,7 @@ def search_prompt(
     rejected: list[str] | None = None,
     fetch_budget: int | None = None,
     mode: str = "full",
+    max_sites: int | None = None,
 ) -> tuple[str, str]:
     """(shared, specific): the shared part is identical for every county searched in the same
     mode in a run (so it can be cached); the specific part is this county's."""
@@ -168,8 +180,7 @@ def search_prompt(
             + "".join(n + "\n" for n in notes)
             + "Begin with the first site. If it blocks you, go to the next. If a starting URL "
             "doesn't show this county's listings, find the county's results page on that site "
-            "with web_search. Check a second site too when the first shows only a few results, "
-            "since each site misses some listings. web_search results (e.g. "
+            "with web_search. " + _site_limit(max_sites) + "web_search results (e.g. "
             f'"{region_label} land for sale" or "... homes for sale") can also lead you to '
             "listing pages on any of these sites. If you open Redfin's county results page, "
             "report its county ID (the number after /county/ in the URL)."
