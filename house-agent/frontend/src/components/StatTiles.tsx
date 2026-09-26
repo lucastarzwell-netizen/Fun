@@ -17,14 +17,14 @@ export function StatTiles({ stats }: { stats: Stats | undefined }) {
     { label: "To review", value: stats?.unreviewed ?? 0, accent: "text-amber-700 dark:text-amber-300" },
   ];
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:grid-cols-5">
       {tiles.map((t) => (
-        <div key={t.label} className="card px-4 py-3">
-          <div className="text-xs font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
+        <div key={t.label} className="card min-w-0 px-3 py-2 sm:px-4 sm:py-3">
+          <div className="text-[11px] leading-tight font-medium uppercase tracking-wide text-stone-500 sm:text-xs dark:text-stone-400">
             {t.label}
           </div>
-          <div className={cx("mt-1 text-2xl font-semibold tabular-nums", t.accent)}>{t.value}</div>
-          {t.hint && <div className="mt-0.5 truncate text-xs text-stone-500">{t.hint}</div>}
+          <div className={cx("mt-1 text-xl font-semibold tabular-nums sm:text-2xl", t.accent)}>{t.value}</div>
+          {t.hint && <div className="mt-0.5 hidden truncate text-xs text-stone-500 sm:block">{t.hint}</div>}
         </div>
       ))}
     </div>

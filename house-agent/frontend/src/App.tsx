@@ -16,12 +16,12 @@ import { LoginScreen } from "./components/LoginScreen";
 
 type Tab = "listings" | "rejected" | "excluded" | "runs" | "settings";
 
-const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-  { key: "listings", label: "Listings", icon: <Home size={16} /> },
-  { key: "rejected", label: "Rejected", icon: <CircleSlash size={16} /> },
-  { key: "excluded", label: "Excluded", icon: <Ban size={16} /> },
-  { key: "runs", label: "Runs", icon: <History size={16} /> },
-  { key: "settings", label: "Search settings", icon: <Settings2 size={16} /> },
+const TABS: { key: Tab; label: string; short: string; icon: React.ReactNode }[] = [
+  { key: "listings", label: "Listings", short: "Listings", icon: <Home size={16} /> },
+  { key: "rejected", label: "Rejected", short: "Rejected", icon: <CircleSlash size={16} /> },
+  { key: "excluded", label: "Excluded", short: "Excluded", icon: <Ban size={16} /> },
+  { key: "runs", label: "Runs", short: "Runs", icon: <History size={16} /> },
+  { key: "settings", label: "Search settings", short: "Settings", icon: <Settings2 size={16} /> },
 ];
 
 export default function App() {
@@ -108,13 +108,15 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-stone-200/80 bg-sand-50/85 backdrop-blur dark:border-stone-800 dark:bg-stone-950/85">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-9 place-items-center rounded-xl bg-pine-600 text-sand-100 shadow-sm">
+      <header className="border-b border-stone-200/80 bg-sand-50/85 backdrop-blur sm:sticky sm:top-0 sm:z-10 dark:border-stone-800 dark:bg-stone-950/85">
+        {/* Phones: brand + icon buttons on one row, search picker + Run on the next.
+            Wider screens: everything on one row. */}
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-pine-600 text-sand-100 shadow-sm">
               <Home size={18} />
             </div>
-            <div className="leading-tight">
+            <div className="min-w-0 leading-tight">
               <div className="font-display text-lg font-semibold">House Agent</div>
               {profile && (
                 <div className="text-xs text-stone-500">
@@ -125,10 +127,10 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
             </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="order-3 flex w-full items-center justify-end gap-2 sm:order-2 sm:w-auto">
             {profiles.data && profiles.data.length > 1 && (
               <select
-                className="input w-auto"
+                className="input min-w-0 flex-1 sm:w-auto sm:max-w-xs sm:flex-none"
                 value={profile?.id}
                 onChange={(e) => setProfileId(Number(e.target.value))}
               >
@@ -139,8 +141,24 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
                 ))}
               </select>
             )}
-            <button className="btn-ghost" onClick={() => setWizardOpen(true)} title="Set up another search">
-              <Plus size={16} />
+            <button
+              className="btn-primary shrink-0"
+              disabled={!profile || !!activeRun || start.isPending}
+              onClick={() => start.mutate()}
+            >
+              {activeRun ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+              {activeRun ? "Searching…" : (
+                <>
+                  <span className="sm:hidden">Run now</span>
+                  <span className="hidden sm:inline">Run search now</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="order-2 flex shrink-0 items-center gap-1 sm:order-3">
+            <button className="btn-ghost p-2 sm:px-3.5" onClick={() => setWizardOpen(true)} title="Set up another search">
+              <Plus size={18} />
               <span className="hidden sm:inline">New search</span>
             </button>
             {signOut && (
@@ -159,38 +177,48 @@ function Dashboard({ signOut }: { signOut?: () => Promise<unknown> }) {
             >
               {theme === "system" ? <Monitor size={18} /> : theme === "light" ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-            <button
-              className="btn-primary"
-              disabled={!profile || !!activeRun || start.isPending}
-              onClick={() => start.mutate()}
-            >
-              {activeRun ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-              {activeRun ? "Searching…" : "Run search now"}
-            </button>
           </div>
         </div>
 
-        <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={cx(
-                "flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition",
-                tab === t.key
-                  ? "border-pine-600 text-pine-700 dark:text-pine-300"
-                  : "border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-200",
-              )}
-            >
-              {t.icon}
-              {t.label}
-              {(t.key === "excluded" || t.key === "rejected") && stats.data ? (
-                <span className="rounded-full bg-stone-200 px-1.5 text-xs dark:bg-stone-800">
-                  {t.key === "excluded" ? stats.data.excluded : stats.data.rejected}
+        <nav className="mx-auto flex max-w-7xl overflow-x-auto px-2 sm:gap-1 sm:px-6">
+          {TABS.map((t) => {
+            const count =
+              stats.data && t.key === "excluded"
+                ? stats.data.excluded
+                : stats.data && t.key === "rejected"
+                  ? stats.data.rejected
+                  : null;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={cx(
+                  // Phones: five equal columns, icon over a short label. Wider: icon, label, count in a row.
+                  "flex min-w-0 flex-1 flex-col items-center gap-0.5 border-b-2 px-1 py-2 text-[11px] font-medium whitespace-nowrap transition",
+                  "sm:flex-none sm:flex-row sm:gap-1.5 sm:px-3 sm:py-2.5 sm:text-sm",
+                  tab === t.key
+                    ? "border-pine-600 text-pine-700 dark:text-pine-300"
+                    : "border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-200",
+                )}
+              >
+                <span className="relative">
+                  {t.icon}
+                  {count ? (
+                    <span className="absolute -top-1.5 left-3 rounded-full bg-stone-200 px-1 text-[10px] leading-4 text-stone-700 sm:hidden dark:bg-stone-700 dark:text-stone-200">
+                      {count}
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
-            </button>
-          ))}
+                <span className="sm:hidden">{t.short}</span>
+                <span className="hidden sm:inline">{t.label}</span>
+                {count != null && (
+                  <span className="hidden rounded-full bg-stone-200 px-1.5 text-xs sm:inline dark:bg-stone-800">
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </header>
 

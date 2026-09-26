@@ -37,17 +37,25 @@ export function RunsView({ profileId }: { profileId: number }) {
         {data.map((run) => (
           <div key={run.id}>
             <button
-              className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left hover:bg-sand-50 dark:hover:bg-stone-800/40"
+              className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-sand-50 sm:items-center dark:hover:bg-stone-800/40"
               onClick={() => setOpen(open === run.id ? null : run.id)}
             >
-              <ChevronRight size={16} className={cx("text-stone-400 transition", open === run.id && "rotate-90")} />
-              <Badge tone={STATUS_TONE[run.status]}>{run.status}</Badge>
-              <span className="font-medium">{dateTime(run.started_at ?? run.created_at)}</span>
-              <span className="text-sm text-stone-500">
-                {run.trigger}
-                {run.finished_at && ` · ${duration(run.started_at, run.finished_at)}`}
+              <ChevronRight
+                size={16}
+                className={cx("mt-1 shrink-0 text-stone-400 transition sm:mt-0", open === run.id && "rotate-90")}
+              />
+              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1">
+                <Badge tone={STATUS_TONE[run.status]}>{run.status}</Badge>
+                <span className="font-medium">{dateTime(run.started_at ?? run.created_at)}</span>
+                <span className="text-sm text-stone-500">
+                  {run.trigger}
+                  {run.finished_at && ` · ${duration(run.started_at, run.finished_at)}`}
+                </span>
+                {/* Its own line on phones; pushed to the right on wider screens. */}
+                <span className="w-full text-sm text-stone-600 sm:ml-auto sm:w-auto dark:text-stone-400">
+                  {headline(run)}
+                </span>
               </span>
-              <span className="ml-auto text-sm text-stone-600 dark:text-stone-400">{headline(run)}</span>
             </button>
             {open === run.id && <RunDetail id={run.id} />}
           </div>

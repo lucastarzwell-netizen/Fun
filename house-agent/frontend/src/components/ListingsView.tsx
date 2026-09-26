@@ -9,6 +9,7 @@ import type { Listing, Profile, Stats } from "../lib/types";
 import { DismissDialog } from "./DismissDialog";
 import { ListingCard } from "./ListingCard";
 import { ListingTable } from "./ListingTable";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { StatTiles } from "./StatTiles";
 
 type StatusFilter = "all" | "new" | "good" | "needs_updating" | "unverified";
@@ -60,6 +61,9 @@ export function ListingsView({ profile, stats }: { profile: Profile; stats: Stat
   });
 
   const [view, setView] = useLocal<"cards" | "table">("listings.view", "cards");
+  // The table needs a wide screen; phones always get cards.
+  const wide = useMediaQuery("(min-width: 640px)");
+  const showTable = view === "table" && wide;
   const [sort, setSort] = useLocal<SortKey>("listings.sort", "default");
   const [hideReviewed, setHideReviewed] = useLocal("listings.hideReviewed", false);
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -140,7 +144,7 @@ export function ListingsView({ profile, stats }: { profile: Profile; stats: Stat
               </option>
             ))}
           </select>
-          <div className="flex rounded-lg border border-stone-300 p-0.5 dark:border-stone-700">
+          <div className="hidden rounded-lg border border-stone-300 p-0.5 sm:flex dark:border-stone-700">
             {(["cards", "table"] as const).map((v) => (
               <button
                 key={v}
@@ -222,7 +226,7 @@ export function ListingsView({ profile, stats }: { profile: Profile; stats: Stat
             ? "No listings yet. Run a search to get started."
             : "Nothing matches these filters."}
         </div>
-      ) : view === "cards" ? (
+      ) : !showTable ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((l) => (
             <ListingCard

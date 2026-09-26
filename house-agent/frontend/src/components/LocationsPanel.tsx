@@ -98,9 +98,9 @@ export function LocationsPanel({
           ? DRIVE_TIMES
           : [...DRIVE_TIMES, a.max_drive_hours].sort((x, y) => x - y);
         return (
-          <div key={i} className="space-y-3 rounded-xl border border-stone-200 p-4 dark:border-stone-800">
+          <div key={i} className="space-y-3 rounded-xl border border-stone-200 p-3 sm:p-4 dark:border-stone-800">
             <div className="flex items-end gap-2">
-              <label className="block flex-1 space-y-1">
+              <label className="block min-w-0 flex-1 space-y-1">
                 <span className="text-sm font-medium">Location</span>
                 <div className="relative">
                   <MapPin size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -112,7 +112,7 @@ export function LocationsPanel({
                   />
                 </div>
               </label>
-              <label className="block w-24 space-y-1">
+              <label className="block w-16 shrink-0 space-y-1 sm:w-24">
                 <span className="text-sm font-medium">Label</span>
                 <input
                   className="input uppercase"

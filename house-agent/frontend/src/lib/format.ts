@@ -29,7 +29,9 @@ export function dateTime(iso: string | null | undefined) {
 export function duration(start: string | null, end: string | null) {
   if (!start || !end) return "";
   const s = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000);
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
 export function cx(...parts: (string | false | null | undefined)[]) {
