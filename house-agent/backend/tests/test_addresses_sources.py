@@ -113,17 +113,41 @@ def test_search_prompt_lists_sites_in_order():
     assert text.index("- zillow (Zillow). Start here: https://z") < text.index("- redfin (Redfin).")
 
 
-def test_site_plan_prefers_sites_not_used_last_time():
+def test_site_plan_order():
     from house_agent.agent.sources import site_plan
 
     region = Region(name="Lenawee County", state="MI", anchor="DTW")
-    order = [
-        k
-        for k, _ in site_plan(
-            Criteria(), region, 0, used_last_time={"redfin"}, blocked_last_time={"zillow"}
-        )
+
+    def order(**kw):
+        return [k for k, _ in site_plan(Criteria(), region, 0, **kw)]
+
+    # Redfin always leads; then cheaper pages first; a site that blocked this county last
+    # time goes last; skipped sites are left out.
+    sizes = {"redfin": 16000, "zillow": 28000, "homes": 56000}
+    assert order(page_cost=sizes, skip={"realtor"}) == ["redfin", "zillow", "homes"]
+    assert order(page_cost=sizes, blocked_last_time={"zillow"}, skip={"realtor"}) == [
+        "redfin",
+        "homes",
+        "zillow",
     ]
-    assert order == ["realtor", "homes", "redfin", "zillow"]
+    # Redfin leads even when it was used last time; it only drops back if it blocked.
+    assert order(page_cost=sizes, used_last_time={"redfin"})[0] == "redfin"
+    assert order(page_cost=sizes, blocked_last_time={"redfin"})[-1] == "redfin"
+    # Without measurements: Redfin first, then sites not used last time.
+    assert order(used_last_time={"zillow"}, blocked_last_time={"homes"}) == [
+        "redfin",
+        "realtor",
+        "zillow",
+        "homes",
+    ]
+
+
+def test_homes_com_gets_a_usage_note():
+    from house_agent.agent.prompts import search_prompt
+
+    plan = [("redfin", "https://r"), ("homes", "https://h")]
+    specific = search_prompt(Criteria(), "X County, MI", "DTW", plan, [], [])[1]
+    assert "Homes.com ignores price" in specific
 
 
 def test_canadian_searches_use_canadian_sites_and_conventions():

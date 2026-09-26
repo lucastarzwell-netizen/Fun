@@ -17,7 +17,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
-from ..links import LinkPolicy, live_sources, site_reliability, site_tallies
+from ..links import LinkPolicy, live_sources, site_page_sizes, site_reliability, site_tallies
 from ..models import (
     ACTIVE,
     REJECTED,
@@ -319,6 +319,15 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
     # Sites that blocked the agent nearly every time lately are skipped, with a retry every
     # few runs in case that changed.
     tallies = site_tallies(session, profile.id)
+    page_cost = site_page_sizes(session, profile.id)
+    if page_cost:
+        logline(
+            "Measured page sizes: "
+            + ", ".join(
+                f"{site_name(k)} ~{v / 4000:.0f}k tokens"
+                for k, v in sorted(page_cost.items(), key=lambda kv: kv[1])
+            )
+        )
     n = settings.blocked_retry_every
     retry = n > 0 and run_number % n == 0
     skipped_sites = {
@@ -376,6 +385,8 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
             used_last_time=set(last.get("used", [])),
             blocked_last_time=set(last.get("blocked", [])),
             skip=set(skipped_sites),
+            page_cost=page_cost,
+            lead=settings.lead_site or None,
         )
         budget = -neg_budget
         model = settings.model if mode == "full" else settings.sweep_model
@@ -386,33 +397,57 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         _progress(session, run, "search", done, len(order), label)
         before_usage = agent.usage.snapshot()
         steps += 1
+        tracked_items = [_item(t, t.id, links) for t in tracked]
+        used: set[str] = set()
+        blocked: set[str] = set()
+        retried = False
         try:
             result = agent.search_region(
                 criteria,
                 label,
                 region.anchor,
                 plan,
-                [_item(t, t.id, links) for t in tracked],
+                tracked_items,
                 excluded_labels,
                 rejected,
                 fetch_budget=budget,
                 mode=mode,
             )
+            if mode == "sweep" and not result.region_checked:
+                # The lighter search couldn't read the county's results (blocked sites,
+                # unfiltered pages, budget used up): try once more as a full search.
+                used |= set(result.sites_used)
+                blocked |= set(result.sites_blocked)
+                logline(f"{label}: sweep couldn't read the results; retrying as a full search")
+                retried = True
+                mode, budget = "full", settings.search_fetches
+                steps += 1
+                result = agent.search_region(
+                    criteria,
+                    label,
+                    region.anchor,
+                    plan,
+                    tracked_items,
+                    excluded_labels,
+                    rejected,
+                    fetch_budget=budget,
+                    mode=mode,
+                )
         except AgentError as e:
             errors.append(f"{label}: {e}")
             skipped_regions.append(label)
             logline(f"{label} failed: {e}")
             continue
+        model = settings.model if mode == "full" else settings.sweep_model
         if region.redfin_county_id is None and result.redfin_county_id:
             region.redfin_county_id = result.redfin_county_id
             learned_ids = True
-        site_status[label] = {
-            "used": sorted(set(result.sites_used)),
-            "blocked": sorted(set(result.sites_blocked)),
-        }
-        for key in set(result.sites_used):
+        used |= set(result.sites_used)
+        blocked |= set(result.sites_blocked)
+        site_status[label] = {"used": sorted(used), "blocked": sorted(blocked)}
+        for key in used:
             site_tally.setdefault(key, {"used": 0, "blocked": 0})["used"] += 1
-        for key in set(result.sites_blocked):
+        for key in blocked:
             site_tally.setdefault(key, {"used": 0, "blocked": 0})["blocked"] += 1
         if not result.region_checked:
             skipped_regions.append(label + (f" ({result.notes})" if result.notes else ""))
@@ -464,7 +499,7 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
                     )
         region_stats[label] = {
             "tier": mode,
-            "why": why,
+            "why": "sweep couldn't read results; retried as full" if retried else why,
             "model": model,
             "added": len(changes.added) - added_before,
             "reported": len(result.listings),

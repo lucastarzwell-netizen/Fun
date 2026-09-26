@@ -142,6 +142,7 @@ the service and run `house-agent import <file>` with your seed file.
 | `HOUSE_AGENT_SWEEP_MODEL` | same as `HOUSE_AGENT_MODEL` | Model for sweeps. Measured on real runs, Sonnet 5 cost more per county than Opus 5 here (it read far more page text), so the default is the main model |
 | `HOUSE_AGENT_SWEEP_EFFORT` | `low` | Effort for sweeps |
 | `HOUSE_AGENT_SWEEP_FETCHES` | `10` | Pages a sweep may open per county |
+| `HOUSE_AGENT_LEAD_SITE` | `redfin` | Site every county search starts with; after it, sites go cheapest first by measured page size (a site with pages over twice the cheapest's goes after the rest), and a site that blocked that county last time goes last. Empty = no fixed lead |
 | `HOUSE_AGENT_BLOCKED_MIN_TRIES` / `_BLOCKED_SHARE` / `_BLOCKED_RETRY_EVERY` | `4` / `0.8` / `4` | A site that blocked the agent in 80%+ of at least 4 recent county searches is skipped, except on every 4th run |
 | `HOUSE_AGENT_AUDIT_EVERY` | `4` | Each county gets a full search every this many runs, staggered (`0` = never) |
 | `HOUSE_AGENT_NEW_READ_LIMIT` | `40` | Most new sweep finds read by the main model per run |
@@ -213,10 +214,12 @@ against a fake Anthropic client. None of them call the network.
 
 ## Known limits
 
-- **Listing data.** Searches are spread across Redfin, Zillow, Realtor.com and Homes.com
-  (plus LandWatch for land), configurable in Search settings. Each county leads with a site
-  it didn't use last run, so coverage rotates across sites; sites that block the agent are
-  tried last next time, and the Runs page shows per-site results. The agent never works
+- **Listing data.** Searches use Redfin, Zillow, Realtor.com and Homes.com (plus LandWatch
+  for land), configurable in Search settings. Every county starts on Redfin (small pages,
+  filtered links), then the other sites cheapest first by measured page size; Homes.com,
+  which ignores filters, is a last resort. Sites that nearly always block the agent are
+  skipped between retries, and the Runs page shows pages, failures and estimated cost per
+  site. The agent never works
   around a block. None of these sites offer a public API, and their terms don't allow
   scraping. Light personal use is one thing; if other people will use this, switch to a
   licensed listings API before opening it up.

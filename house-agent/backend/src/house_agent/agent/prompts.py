@@ -7,7 +7,7 @@ user message.
 from __future__ import annotations
 
 from ..schemas import Criteria, LandPrefs
-from .sources import SITES, sites_for
+from .sources import SITE_NOTES, SITES, sites_for
 
 SYSTEM = """\
 You are a property-search assistant. You look through real-estate listing sites for one \
@@ -159,10 +159,14 @@ def search_prompt(
             name = SITES[key].name if key in SITES else key
             start = f" Start here: {url}" if url else ""
             lines.append(f"- {key} ({name}).{start}")
+        notes = [SITE_NOTES[key] for key, _ in plan if key in SITE_NOTES]
         where = (
             "Listing sites to use for this county, in this order (the keys go in sites_used / "
-            "sites_blocked):\n" + "\n".join(lines) + "\n"
-            "Begin with the first site. If it blocks you, go to the next. If a starting URL "
+            "sites_blocked):\n"
+            + "\n".join(lines)
+            + "\n"
+            + "".join(n + "\n" for n in notes)
+            + "Begin with the first site. If it blocks you, go to the next. If a starting URL "
             "doesn't show this county's listings, find the county's results page on that site "
             "with web_search. Check a second site too when the first shows only a few results, "
             "since each site misses some listings. web_search results (e.g. "

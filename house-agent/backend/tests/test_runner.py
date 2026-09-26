@@ -412,7 +412,7 @@ def test_feedback_and_rejections_reach_the_agent(session):
     assert rejected_arg == ["3 Mold Rd, Adrian, MI (was $150,000)"]
 
 
-def test_each_run_leads_with_a_site_the_county_did_not_use_last_time(session):
+def test_site_history_is_recorded_and_blocked_sites_go_last(session):
     profile = _profile(session)
     lenawee = "Lenawee County, MI"
     first = FakeAgent(
@@ -426,27 +426,51 @@ def test_each_run_leads_with_a_site_the_county_did_not_use_last_time(session):
         }
     )
     run = _run(session, profile, first)
-    assert [k for k, _ in _call(first, lenawee)["plan"]][0] != [
-        k for k, _ in _call(first, "Monroe County, MI")["plan"]
-    ][0]
+    assert [k for k, _ in _call(first, lenawee)["plan"]][0] == "redfin"  # Redfin leads
     assert run.summary["site_status"][lenawee] == {"used": ["realtor"], "blocked": ["zillow"]}
     assert run.summary["sites"]["realtor"] == {"used": 1, "blocked": 0}
     assert run.summary["sites"]["zillow"] == {"used": 0, "blocked": 1}
 
-    # Next run: fresh sites first, last run's site after them, the blocked site last.
-    second = FakeAgent(
-        regions={lenawee: {"region_checked": True, "listings": [], "sites_used": ["redfin"]}}
-    )
+    # Next run: Redfin still first, the site that blocked this county last.
+    second = FakeAgent()
     _run(session, profile, second)
     order = [k for k, _ in _call(second, lenawee)["plan"]]
-    assert order[0] in {"redfin", "homes"}
-    assert order[-2:] == ["realtor", "zillow"]
+    assert order[0] == "redfin" and order[-1] == "zillow"
 
-    # The run after that leads with the one site this county hasn't led with yet.
-    third = FakeAgent()
-    _run(session, profile, third)
-    order = [k for k, _ in _call(third, lenawee)["plan"]]
-    assert order[0] != "redfin" and order[-1] == "redfin"
+
+def test_unreadable_sweep_is_retried_as_a_full_search(session, monkeypatch):
+    import dataclasses
+
+    from house_agent.agent import runner
+
+    monkeypatch.setattr(
+        runner, "settings", dataclasses.replace(runner.settings, audit_every_runs=0)
+    )
+    profile = _profile(session)
+    _run(session, profile, FakeAgent())  # first (full) searches
+
+    class FailsFirstSweep(FakeAgent):
+        def search_region(self, *args, **kwargs):
+            if kwargs.get("mode") == "sweep" and args[1] == "Lenawee County, MI":
+                self.search_calls.append({"label": args[1], "mode": "sweep"})
+                from house_agent.agent.types import SearchResult
+
+                return SearchResult(
+                    listings=[], region_checked=False, sites_blocked=["zillow"], notes="blocked"
+                )
+            return super().search_region(*args, **kwargs)
+
+    agent = FailsFirstSweep(
+        regions={"Lenawee County, MI": {"region_checked": True, "listings": [_found("1 Farm Rd")]}}
+    )
+    run = _run(session, profile, agent)
+    lenawee = [c["mode"] for c in agent.search_calls if c["label"] == "Lenawee County, MI"]
+    assert lenawee == ["sweep", "full"]
+    assert run.summary["added"] == ["1 Farm Rd, Adrian, MI"]
+    assert "Lenawee County, MI" not in run.summary["skipped_regions"]
+    stats = run.summary["region_stats"]["Lenawee County, MI"]
+    assert stats["tier"] == "full" and "retried" in stats["why"]
+    assert run.summary["site_status"]["Lenawee County, MI"]["blocked"] == ["zillow"]
 
 
 def test_drive_km_is_stored_for_canadian_listings(session):

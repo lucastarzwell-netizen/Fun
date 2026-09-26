@@ -146,31 +146,52 @@ def site_plan(
     used_last_time: set[str] = frozenset(),
     blocked_last_time: set[str] = frozenset(),
     skip: set[str] = frozenset(),
+    page_cost: dict[str, float] | None = None,
+    lead: str | None = "redfin",
 ) -> list[tuple[str, str | None]]:
     """Ordered (site key, starting URL) pairs for one county.
 
-    Every site misses some listings, so each run leads with a site this county did NOT use
-    last time; over a few runs every county gets covered by every site that allows access.
-    Order: sites not used last run, then the ones that were, then sites that blocked it.
-    Within each group, `rotation` (run number + county index) spreads load across sites.
+    Order: `lead` first (Redfin: small pages, and its links carry the buyer's filters),
+    then the other sites cheapest first by measured page size (`page_cost`, average
+    characters per page from recent runs; a site more than twice the cheapest goes after
+    the rest), and sites that blocked this county last time at the end. Among sites costing
+    about the same, one this county didn't use last time comes first, then `rotation`
+    (run number + county index) spreads the load. Sites in `skip` (nearly always block the
+    agent) are left out unless that would leave none.
     """
     keys = sites_for(criteria)
     if "land" not in criteria.property_types:
         keys = [k for k in keys if not SITES[k].land_only]
-    # Sites that nearly always block the agent are left out (unless that would leave none).
     keys = [k for k in keys if k not in skip] or keys
     if not keys:
         return []
     shift = rotation % len(keys)
     keys = keys[shift:] + keys[:shift]
+    costs = {k: v for k, v in (page_cost or {}).items() if v and v > 0}
+    cheapest = min(costs.values()) if costs else None
 
-    def group(k: str) -> int:
-        if k in blocked_last_time:
-            return 2
-        return 1 if k in used_last_time else 0
+    def rank(k: str) -> tuple:
+        cost = costs.get(k)
+        expensive = cheapest is not None and cost is not None and cost > 2 * cheapest
+        return (
+            k in blocked_last_time,
+            k != lead,
+            expensive,
+            k in used_last_time,
+        )
 
-    keys.sort(key=group)  # stable sort keeps the rotation within each group
+    keys.sort(key=rank)  # stable sort keeps the rotation among equals
     return [(k, SITES[k].county_url(region, criteria)) for k in keys]
+
+
+# How to use sites whose results pages don't behave like the others.
+SITE_NOTES = {
+    "homes": (
+        "Homes.com ignores price, lot-size and type filters in its URLs and returns the whole "
+        "county, unfiltered. Use it only as a fallback: read its first results page, at most "
+        "one more, and don't page through the unfiltered list."
+    ),
+}
 
 
 # Host name -> site key, for filing a listing URL under the site it came from.

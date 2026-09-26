@@ -66,6 +66,26 @@ def site_tallies(session: Session, profile_id: int) -> dict[str, tuple[int, int]
     return {key: (used.get(key, 0), blocked.get(key, 0)) for key in set(used) | set(blocked)}
 
 
+def site_page_sizes(session: Session, profile_id: int) -> dict[str, float]:
+    """Average characters of page text per page that loaded, per site, over recent runs.
+    Page text is most of what a search costs, so this ranks sites by cost."""
+    chars: dict[str, int] = {}
+    pages: dict[str, int] = {}
+    runs = session.scalars(
+        select(Run)
+        .where(Run.profile_id == profile_id, Run.status.in_(["succeeded", "partial", "cancelled"]))
+        .order_by(Run.id.desc())
+        .limit(RELIABILITY_RUNS)
+    )
+    for run in runs:
+        for key, c in ((run.summary or {}).get("site_costs") or {}).items():
+            loaded = int(c.get("pages", 0)) - int(c.get("errors", 0))
+            if loaded > 0:
+                chars[key] = chars.get(key, 0) + int(c.get("chars", 0))
+                pages[key] = pages.get(key, 0) + loaded
+    return {key: chars[key] / pages[key] for key in pages}
+
+
 def site_reliability(session: Session, profile_id: int) -> dict[str, float]:
     """Share of recent county searches where each site let the agent in.
 
