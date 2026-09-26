@@ -189,12 +189,40 @@ def county_history(session: Session, profile_id: int, current_run_id: int) -> di
     ):
         when = run.started_at or run.created_at
         for label, stats in ((run.summary or {}).get("region_stats") or {}).items():
-            h = history.setdefault(label, {"full": False, "last_sweep": None})
+            h = history.setdefault(
+                label, {"full": False, "last_sweep": None, "last_searched": None, "recent": []}
+            )
+            if h["last_searched"] is None:
+                h["last_searched"] = when
+            # What each search turned up, newest first (for spotting dormant counties).
+            h["recent"].append(
+                int(stats.get("reported", 0))
+                + int(stats.get("seen_tracked", 0))
+                + int(stats.get("added", 0))
+            )
             if stats.get("tier", "full") == "full":
                 h["full"] = True
             elif h["last_sweep"] is None:
                 h["last_sweep"] = when  # newest first, so the first one seen is the latest
     return history
+
+
+def dormant_skip(label: str, history: dict[str, dict], now: datetime) -> datetime | None:
+    """If this county should sit this run out, when it was last searched; else None.
+
+    A county whose last few searches turned up nothing at all is searched every other week
+    (at most once per `dormant_every_days`). Anything found there makes it weekly again.
+    """
+    needed, every = settings.dormant_after_runs, settings.dormant_every_days
+    h = history.get(label)
+    if needed <= 0 or every <= 0 or h is None or h["last_searched"] is None:
+        return None
+    if len(h["recent"]) < needed or any(h["recent"][:needed]):
+        return None
+    last = h["last_searched"]
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=UTC)
+    return last if now - last < timedelta(days=every) else None
 
 
 def county_tier(label: str, history: dict[str, dict], run_number: int) -> tuple[str, str]:
@@ -307,14 +335,25 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
     # Full searches first, then sweeps, each grouped by page budget: counties searched the
     # same way share a cached prompt prefix, and the cache only lasts a few minutes.
     order = []
+    dormant_skipped: dict[str, str] = {}
     for region_index, region in enumerate(criteria.regions):
         label = f"{region.name}, {region.state}"
+        last = dormant_skip(label, counties, _now())
+        if last is not None:
+            dormant_skipped[label] = last.isoformat()
+            continue
         mode, why = county_tier(label, counties, run_number)
         budget = settings.quiet_search_fetches if label in quiet else settings.search_fetches
         if mode == "sweep":
             budget = min(budget, settings.sweep_fetches)
         order.append((mode != "full", -budget, region_index, region, label, mode, why))
     order.sort(key=lambda o: o[:3])
+    if dormant_skipped:
+        logline(
+            f"Skipping {len(dormant_skipped)} quiet counties this run (nothing found in their "
+            f"last {settings.dormant_after_runs} searches; searched every other week): "
+            + ", ".join(dormant_skipped)
+        )
 
     # Sites that blocked the agent nearly every time lately are skipped, with a retry every
     # few runs in case that changed.
@@ -652,6 +691,7 @@ def _execute(session: Session, run: Run, profile: SearchProfile, agent: SearchAg
         },
         "sweep_misses": sweep_misses,
         "sites_skipped": skipped_sites,
+        "dormant_skipped": dormant_skipped,
         "site_costs": _site_costs(region_stats),
         "active_count": session.query(Listing)
         .filter(Listing.profile_id == profile.id, Listing.listing_state == ACTIVE)

@@ -111,7 +111,9 @@ def test_split_moves_locations_counties_and_listings(session):
 
     # The moved county keeps its history, so it goes straight to sweeps.
     history = county_history(session, new.id, current_run_id=0)
-    assert history == {"Kane County, IL": {"full": True, "last_sweep": None}}
+    assert list(history) == ["Kane County, IL"]
+    assert history["Kane County, IL"]["full"] is True
+    assert history["Kane County, IL"]["last_sweep"] is None
     split_run = session.query(Run).filter_by(profile_id=new.id).one()
     assert split_run.trigger == "split"
     assert split_run.summary["site_status"]["Kane County, IL"]["blocked"] == ["redfin"]
