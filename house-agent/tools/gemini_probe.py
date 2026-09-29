@@ -314,7 +314,11 @@ def run(args) -> None:
         raw["listing_reads"].append(r)
 
     # 3. County results pages the app would open.
-    regions = criteria.regions[: args.counties]
+    regions = criteria.regions
+    if args.county:
+        wanted = [w.strip().lower() for w in args.county.split(",") if w.strip()]
+        regions = [r for r in regions if any(w in r.name.lower() for w in wanted)]
+    regions = regions[: args.counties]
     for region in regions:
         for key in args.sites.split(","):
             site = SITES.get(key)
@@ -482,6 +486,7 @@ def main() -> None:
     p.add_argument("--list-models", action="store_true")
     p.add_argument("--listings", type=int, default=12, help="listing pages to read")
     p.add_argument("--counties", type=int, default=3, help="counties for results pages")
+    p.add_argument("--county", help="comma-separated county names to test, e.g. Winnebago,Ogle")
     p.add_argument("--sites", default="redfin,zillow,realtor,homes")
     p.add_argument("--discover", type=int, default=2, help="counties to search on its own")
     p.add_argument("--price-in", type=float, help="$ per million input tokens")
