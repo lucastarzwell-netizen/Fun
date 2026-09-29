@@ -470,9 +470,58 @@ def build_report(raw: dict, by_key: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def show(folder: Path) -> None:
+    """Per-call details of an earlier run: fetch statuses, what Gemini said, samples."""
+    runs = sorted(folder.glob("*/raw.json")) or sorted(folder.glob("raw.json"))
+    if not runs:
+        sys.exit(f"No raw.json under {folder}")
+    raw = json.loads(runs[-1].read_text())
+    print(f"{runs[-1]}  model {raw['model']}")
+
+    def statuses(r: dict) -> str:
+        return ", ".join(f["status"].split("_")[-1] for f in r.get("fetched") or []) or "none"
+
+    def clip(v, n=90) -> str:
+        return str(v or "")[:n].replace("\n", " ")
+
+    print("\nLISTING PAGES")
+    for r in raw["listing_reads"]:
+        d = r.get("data") or {}
+        t = r["truth"]
+        print(f"- {r['site']} {t['address']}: fetch {statuses(r)}")
+        print(
+            f"    app ${t['price'] or 0:,.0f} {t.get('market_status')} ({t['as_of']})"
+            f" | gemini {d.get('status')} ${d.get('price') or 0:,.0f}"
+        )
+        print(f"    dates: {clip(d.get('page_dates'))} | notes: {clip(d.get('notes'))}")
+        if r.get("error"):
+            print(f"    error: {clip(r['error'], 200)}")
+    print("\nRESULTS PAGES")
+    for r in raw["results_reads"]:
+        d = r.get("data") or {}
+        print(
+            f"- {r['site']} {r['county']}: fetch {statuses(r)}, count shown "
+            f"{d.get('result_count_shown')}, filters: {clip(d.get('filters_applied'), 70)}"
+        )
+        print(f"    notes: {clip(d.get('notes'))}")
+        for x in (d.get("listings") or [])[:4]:
+            print(
+                f"    {clip(x.get('address'), 40)}, {x.get('city')}: ${x.get('price') or 0:,.0f}"
+                f" {x.get('status')}"
+            )
+        if r.get("error"):
+            print(f"    error: {clip(r['error'], 200)}")
+    print("\nSEARCHING ON ITS OWN")
+    for r in raw["discover"]:
+        print(f"- {r['county']}: {clip(r.get('error') or r.get('text'), 400)}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument(
+        "--show", metavar="DIR", help="print the details of an earlier run (its --out folder)"
+    )
     src.add_argument("--app", help="app URL, e.g. https://house-agent-xxxx.onrender.com")
     src.add_argument("--snapshot", help="saved search JSON")
     src.add_argument("--db", action="store_true", help="the app's own database (on Render)")
@@ -492,8 +541,11 @@ def main() -> None:
     p.add_argument("--price-in", type=float, help="$ per million input tokens")
     p.add_argument("--price-out", type=float, help="$ per million output tokens")
     args = p.parse_args()
-    if not os.environ.get("GEMINI_API_KEY"):
+    if not os.environ.get("GEMINI_API_KEY") and not args.show:
         sys.exit("Set GEMINI_API_KEY.")
+    if args.show:
+        show(Path(args.show))
+        return
     if args.list_models:
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
         for m in client.models.list():
