@@ -15,6 +15,8 @@ Questions it answers:
 Truth data, most current first:
   --app URL      the running app, signed in with HOUSE_AGENT_PASSWORD (the demo password
                  is enough: read-only; the searches to probe must be visible to the demo).
+  --db           the app's own database. Run it this way on the Render server, where
+                 GEMINI_API_KEY and the database already are (Render dashboard > Shell).
   --snapshot F   a saved search file (backend/data/*.local.json), older.
 
 Needs GEMINI_API_KEY and `pip install google-genai` (not an app dependency). Run from
@@ -162,8 +164,48 @@ class Probe:
         return (tokens_in * self.price_in + tokens_out * self.price_out) / 1_000_000
 
 
+def _truth_from_db(profile_filter: str | None) -> tuple[Criteria, list[dict]]:
+    """Read the app's own database (on the Render server: its configured database)."""
+    from house_agent.db import SessionLocal
+    from house_agent.models import Listing, SearchProfile
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    with SessionLocal() as session:
+        profiles = list(session.scalars(select(SearchProfile).order_by(SearchProfile.id)))
+        if profile_filter:
+            profiles = [p for p in profiles if profile_filter.lower() in p.name.lower()]
+        if not profiles:
+            sys.exit("No matching search in the database.")
+        profile = profiles[0]
+        rows = session.scalars(
+            select(Listing)
+            .where(Listing.profile_id == profile.id, Listing.url.is_not(None))
+            .options(selectinload(Listing.sources))
+        ).all()
+        listings = [
+            {
+                "address": r.address,
+                "city": r.city,
+                "state": r.state,
+                "url": r.url,
+                "price": r.price,
+                "mls": r.mls_number,
+                "state_in_app": r.listing_state,
+                "market_status": r.market_status,
+                "as_of": str(r.last_checked or r.first_seen),
+                "urls": [r.url] + [s.url for s in r.sources if not s.dead and s.url != r.url],
+            }
+            for r in rows
+        ]
+        print(f"Truth: database search '{profile.name}', {len(listings)} listings")
+        return Criteria.model_validate(profile.criteria), listings
+
+
 def load_truth(args) -> tuple[Criteria, list[dict]]:
     """Criteria and listings (with the date the app last confirmed each one)."""
+    if args.db:
+        return _truth_from_db(args.profile)
     if args.app:
         password = os.environ.get("HOUSE_AGENT_PASSWORD", "")
         with httpx.Client(base_url=args.app.rstrip("/"), timeout=60) as http:
@@ -238,7 +280,7 @@ def pick_listings(listings: list[dict], n: int) -> list[tuple[dict, str]]:
 def run(args) -> None:
     criteria, listings = load_truth(args)
     probe = Probe(args.model, args.price_in, args.price_out)
-    out_dir = Path("data/probe") / datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = Path(args.out) / datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
     raw: dict = {"model": args.model, "listing_reads": [], "results_reads": [], "discover": []}
     by_key = {addr_key(li["address"]): li for li in listings}
@@ -282,7 +324,8 @@ def run(args) -> None:
     (out_dir / "raw.json").write_text(json.dumps(raw, indent=2, default=str))
     report = build_report(raw, by_key)
     (out_dir / "report.md").write_text(report)
-    print(f"\nWrote {out_dir}/report.md")
+    print("\n" + report)
+    print(f"Wrote {out_dir}/report.md")
 
 
 def _status_ok(fetched: list[dict]) -> bool:
@@ -407,6 +450,8 @@ def main() -> None:
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--app", help="app URL, e.g. https://house-agent-xxxx.onrender.com")
     src.add_argument("--snapshot", help="saved search JSON")
+    src.add_argument("--db", action="store_true", help="the app's own database (on Render)")
+    p.add_argument("--out", default="data/probe", help="where to write the report")
     p.add_argument("--profile", help="part of the search name to probe (with --app)")
     p.add_argument(
         "--model",
