@@ -164,14 +164,35 @@ class Probe:
         return (tokens_in * self.price_in + tokens_out * self.price_out) / 1_000_000
 
 
+def _db_path() -> Path:
+    """The app's SQLite file: $HOUSE_AGENT_DATABASE_URL, else what render-start.sh picks on
+    the Render disk. Must already exist and have data; nothing is ever created."""
+    url = os.environ.get("HOUSE_AGENT_DATABASE_URL", "")
+    if url.startswith("sqlite:///"):
+        candidates = [Path(url.removeprefix("sqlite:///"))]
+    else:
+        candidates = [Path("/data/house-agent.sqlite3"), Path("/data/house_agent.db")]
+    for path in candidates:
+        if path.is_file() and path.stat().st_size > 0:
+            return path
+    sys.exit(f"No database found (looked for: {', '.join(map(str, candidates))}).")
+
+
+def _readonly_engine():
+    from sqlalchemy import create_engine
+
+    path = _db_path()
+    print(f"Database: {path} (read-only)")
+    return create_engine(f"sqlite:///file:{path}?mode=ro&uri=true")
+
+
 def _truth_from_db(profile_filter: str | None) -> tuple[Criteria, list[dict]]:
     """Read the app's own database (on the Render server: its configured database)."""
-    from house_agent.db import SessionLocal
     from house_agent.models import Listing, SearchProfile
     from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
+    from sqlalchemy.orm import Session, selectinload
 
-    with SessionLocal() as session:
+    with Session(_readonly_engine()) as session:
         profiles = list(session.scalars(select(SearchProfile).order_by(SearchProfile.id)))
         if profile_filter:
             profiles = [p for p in profiles if profile_filter.lower() in p.name.lower()]
